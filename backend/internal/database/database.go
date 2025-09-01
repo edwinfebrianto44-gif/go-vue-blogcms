@@ -38,6 +38,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Post{},
 		&models.Comment{},
 		&models.RefreshToken{},
+		&models.FileUpload{},
 	)
 	
 	if err != nil {

@@ -31,7 +31,7 @@ const router = createRouter({
     {
       path: '/categories/:slug',
       name: 'category-posts',
-      component: () => import('@/views/CategoryPostsView.vue'),
+      component: () => import('@/views/CategoryView.vue'),
       meta: {
         title: 'Category - Blog CMS'
       }
@@ -57,77 +57,38 @@ const router = createRouter({
     {
       path: '/dashboard',
       name: 'dashboard',
-      component: () => import('@/views/dashboard/DashboardLayout.vue'),
+      component: () => import('@/views/dashboard/DashboardView.vue'),
       meta: {
         title: 'Dashboard - Blog CMS',
         requiresAuth: true
-      },
-      children: [
-        {
-          path: '',
-          name: 'dashboard-home',
-          component: () => import('@/views/dashboard/DashboardHome.vue'),
-          meta: {
-            title: 'Dashboard - Blog CMS',
-            requiresAuth: true
-          }
-        },
-        {
-          path: 'posts',
-          name: 'dashboard-posts',
-          component: () => import('@/views/dashboard/PostsManagement.vue'),
-          meta: {
-            title: 'Manage Posts - Dashboard',
-            requiresAuth: true
-          }
-        },
-        {
-          path: 'posts/create',
-          name: 'dashboard-posts-create',
-          component: () => import('@/views/dashboard/PostForm.vue'),
-          meta: {
-            title: 'Create Post - Dashboard',
-            requiresAuth: true
-          }
-        },
-        {
-          path: 'posts/:id/edit',
-          name: 'dashboard-posts-edit',
-          component: () => import('@/views/dashboard/PostForm.vue'),
-          meta: {
-            title: 'Edit Post - Dashboard',
-            requiresAuth: true
-          }
-        },
-        {
-          path: 'categories',
-          name: 'dashboard-categories',
-          component: () => import('@/views/dashboard/CategoriesManagement.vue'),
-          meta: {
-            title: 'Manage Categories - Dashboard',
-            requiresAuth: true,
-            requiresAdmin: true
-          }
-        },
-        {
-          path: 'comments',
-          name: 'dashboard-comments',
-          component: () => import('@/views/dashboard/CommentsManagement.vue'),
-          meta: {
-            title: 'Manage Comments - Dashboard',
-            requiresAuth: true
-          }
-        },
-        {
-          path: 'profile',
-          name: 'dashboard-profile',
-          component: () => import('@/views/dashboard/ProfileSettings.vue'),
-          meta: {
-            title: 'Profile Settings - Dashboard',
-            requiresAuth: true
-          }
-        }
-      ]
+      }
+    },
+    {
+      path: '/dashboard/posts',
+      name: 'dashboard-posts',
+      component: () => import('@/views/dashboard/PostsView.vue'),
+      meta: {
+        title: 'Manage Posts - Dashboard',
+        requiresAuth: true
+      }
+    },
+    {
+      path: '/dashboard/posts/create',
+      name: 'dashboard-posts-create',
+      component: () => import('@/views/dashboard/PostForm.vue'),
+      meta: {
+        title: 'Create Post - Dashboard',
+        requiresAuth: true
+      }
+    },
+    {
+      path: '/dashboard/posts/:id/edit',
+      name: 'dashboard-posts-edit',
+      component: () => import('@/views/dashboard/PostForm.vue'),
+      meta: {
+        title: 'Edit Post - Dashboard',
+        requiresAuth: true
+      }
     },
     {
       path: '/:pathMatch(.*)*',
@@ -148,26 +109,63 @@ const router = createRouter({
 })
 
 // Navigation guards
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
+  
+  // Initialize auth if not already done
+  if (authStore.accessToken && !authStore.user) {
+    try {
+      await authStore.initAuth()
+    } catch (error) {
+      console.error('Auth initialization failed:', error)
+      authStore.logout()
+    }
+  }
   
   // Set page title
   document.title = to.meta.title || 'Blog CMS'
   
   // Check authentication requirements
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next({ name: 'login', query: { redirect: to.fullPath } })
+    // Store intended destination for redirect after login
+    const redirectPath = to.fullPath !== '/' ? to.fullPath : null
+    next({ 
+      name: 'login', 
+      query: redirectPath ? { redirect: redirectPath } : {} 
+    })
     return
   }
   
   // Check guest requirements (redirect authenticated users)
   if (to.meta.requiresGuest && authStore.isAuthenticated) {
-    next({ name: 'dashboard' })
+    // Check if there's a stored redirect path
+    const redirectPath = localStorage.getItem('redirectPath')
+    if (redirectPath && redirectPath !== '/login' && redirectPath !== '/register') {
+      localStorage.removeItem('redirectPath')
+      next(redirectPath)
+    } else {
+      next({ name: 'dashboard' })
+    }
     return
   }
   
   // Check admin requirements
   if (to.meta.requiresAdmin && (!authStore.isAuthenticated || !authStore.isAdmin)) {
+    console.warn('Access denied: Admin privileges required')
+    next({ name: 'dashboard' })
+    return
+  }
+  
+  // Check editor requirements
+  if (to.meta.requiresEditor && (!authStore.isAuthenticated || !authStore.isEditor)) {
+    console.warn('Access denied: Editor privileges required')
+    next({ name: 'dashboard' })
+    return
+  }
+  
+  // Check author requirements
+  if (to.meta.requiresAuthor && (!authStore.isAuthenticated || !authStore.isAuthor)) {
+    console.warn('Access denied: Author privileges required')
     next({ name: 'dashboard' })
     return
   }

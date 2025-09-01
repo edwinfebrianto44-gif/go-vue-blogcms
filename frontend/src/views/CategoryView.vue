@@ -128,12 +128,11 @@ import {
   FolderIcon,
   MagnifyingGlassIcon,
   DocumentTextIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon
+  ChevronLeftIcon
 } from '@heroicons/vue/24/outline'
 import { usePostsStore } from '@/stores/posts'
 import { useCategoriesStore } from '@/stores/categories'
-import PostCard from '@/components/ui/PostCard.vue'
+import PostCard from '@/components/PostCard.vue'
 
 const route = useRoute()
 const postsStore = usePostsStore()

@@ -177,8 +177,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useHead } from '@vueuse/head'
 import {
   ChevronRightIcon,
   DocumentTextIcon,
@@ -188,7 +189,8 @@ import {
   LinkIcon
 } from '@heroicons/vue/24/outline'
 import { usePostsStore } from '@/stores/posts'
-import PostCard from '@/components/ui/PostCard.vue'
+import { useSEO, generateStructuredData, extractTextFromHTML } from '@/utils/seo'
+import PostCard from '@/components/PostCard.vue'
 import CommentsSection from '@/components/comments/CommentsSection.vue'
 
 const route = useRoute()
@@ -204,6 +206,157 @@ const readingTime = computed(() => {
   const words = post.value.content.replace(/<[^>]*>/g, '').split(/\s+/).length
   return Math.ceil(words / wordsPerMinute)
 })
+
+// SEO Configuration
+const { updateSEO } = useSEO()
+
+// Dynamic head management
+const headData = computed(() => {
+  if (!post.value) {
+    return {
+      title: 'Loading... - Blog CMS',
+      meta: []
+    }
+  }
+
+  const baseUrl = import.meta.env.VITE_APP_URL || 'https://your-domain.com'
+  const postUrl = `${baseUrl}/posts/${post.value.slug}`
+  const description = extractTextFromHTML(post.value.excerpt || post.value.content, 160)
+  const image = post.value.featured_image || `${baseUrl}/og-image.jpg`
+
+  return {
+    title: `${post.value.title} - Blog CMS`,
+    meta: [
+      {
+        name: 'description',
+        content: description
+      },
+      {
+        name: 'keywords',
+        content: post.value.tags ? post.value.tags.join(', ') : ''
+      },
+      {
+        name: 'author',
+        content: post.value.author?.name || 'Blog CMS'
+      },
+      {
+        name: 'article:published_time',
+        content: post.value.created_at
+      },
+      {
+        name: 'article:modified_time',
+        content: post.value.updated_at
+      },
+      {
+        name: 'article:author',
+        content: post.value.author?.name || 'Blog CMS'
+      },
+      {
+        name: 'article:section',
+        content: post.value.category?.name || ''
+      },
+      // Open Graph
+      {
+        property: 'og:type',
+        content: 'article'
+      },
+      {
+        property: 'og:title',
+        content: post.value.title
+      },
+      {
+        property: 'og:description',
+        content: description
+      },
+      {
+        property: 'og:image',
+        content: image
+      },
+      {
+        property: 'og:image:width',
+        content: '1200'
+      },
+      {
+        property: 'og:image:height',
+        content: '630'
+      },
+      {
+        property: 'og:url',
+        content: postUrl
+      },
+      {
+        property: 'og:site_name',
+        content: 'Blog CMS'
+      },
+      {
+        property: 'article:published_time',
+        content: post.value.created_at
+      },
+      {
+        property: 'article:modified_time',
+        content: post.value.updated_at
+      },
+      {
+        property: 'article:author',
+        content: post.value.author?.name || 'Blog CMS'
+      },
+      {
+        property: 'article:section',
+        content: post.value.category?.name || ''
+      },
+      // Twitter Card
+      {
+        name: 'twitter:card',
+        content: 'summary_large_image'
+      },
+      {
+        name: 'twitter:site',
+        content: '@your_twitter'
+      },
+      {
+        name: 'twitter:creator',
+        content: post.value.author?.twitter || '@your_twitter'
+      },
+      {
+        name: 'twitter:title',
+        content: post.value.title
+      },
+      {
+        name: 'twitter:description',
+        content: description
+      },
+      {
+        name: 'twitter:image',
+        content: image
+      }
+    ],
+    link: [
+      {
+        rel: 'canonical',
+        href: postUrl
+      }
+    ],
+    script: [
+      {
+        type: 'application/ld+json',
+        children: JSON.stringify(generateStructuredData('article', {
+          title: post.value.title,
+          description: description,
+          image: image,
+          publishedAt: post.value.created_at,
+          updatedAt: post.value.updated_at,
+          author: {
+            name: post.value.author?.name || 'Anonymous',
+            url: post.value.author?.website
+          },
+          url: postUrl
+        }))
+      }
+    ]
+  }
+})
+
+useHead(headData)
 
 const formatDate = (dateString) => {
   return new Date(dateString).toLocaleDateString('en-US', {
@@ -228,34 +381,32 @@ const copyLink = async () => {
   try {
     await navigator.clipboard.writeText(window.location.href)
     if (window.toast) {
-      window.toast.success('Link copied to clipboard!')
+      window.toast.success('Success', 'Link copied to clipboard!')
     }
   } catch (error) {
     console.error('Failed to copy link:', error)
     if (window.toast) {
-      window.toast.error('Failed to copy link')
+      window.toast.error('Error', 'Failed to copy link')
     }
   }
 }
 
 const loadPost = async () => {
   try {
-    const result = await postsStore.fetchPost(route.params.slug)
-    if (result.success) {
-      post.value = result.data
-      
-      // Update page title
-      document.title = `${post.value.title} - BlogCMS`
-      
-      // Load related posts
-      await loadRelatedPosts()
-      
-      // Track view (only for published posts)
-      if (post.value.status === 'published') {
-        await trackView()
-      }
-    } else {
+    await postsStore.fetchPostBySlug(route.params.slug)
+    post.value = postsStore.currentPost
+    
+    if (!post.value) {
       router.push('/404')
+      return
+    }
+    
+    // Load related posts
+    await loadRelatedPosts()
+    
+    // Track view (only for published posts)
+    if (post.value.status === 'published') {
+      await trackView()
     }
   } catch (error) {
     console.error('Error loading post:', error)
@@ -267,13 +418,13 @@ const loadRelatedPosts = async () => {
   if (!post.value?.category?.id) return
   
   try {
-    const allPosts = await postsStore.fetchPosts({
-      category: post.value.category.id,
-      status: 'published'
+    const result = await postsStore.fetchPostsByCategory(post.value.category.id, { 
+      limit: 5,
+      status: 'published' 
     })
     
     // Filter out current post and limit to 4
-    relatedPosts.value = allPosts.data
+    relatedPosts.value = postsStore.posts
       .filter(p => p.id !== post.value.id)
       .slice(0, 4)
   } catch (error) {
@@ -282,74 +433,23 @@ const loadRelatedPosts = async () => {
 }
 
 const trackView = async () => {
+  // Implement view tracking if needed
   try {
-    await postsStore.trackView(post.value.id)
-    if (post.value.views !== undefined) {
-      post.value.views = (post.value.views || 0) + 1
-    }
+    // await api.post(`/posts/${post.value.id}/view`)
+    console.log('View tracked for post:', post.value.id)
   } catch (error) {
     console.error('Error tracking view:', error)
   }
-}
-
-// SEO Meta Tags
-const updateMetaTags = () => {
-  if (!post.value) return
-  
-  // Remove existing meta tags
-  const existingTags = document.querySelectorAll('meta[data-post-meta]')
-  existingTags.forEach(tag => tag.remove())
-  
-  // Add new meta tags
-  const metaTags = [
-    { name: 'description', content: post.value.excerpt || post.value.title },
-    { property: 'og:title', content: post.value.title },
-    { property: 'og:description', content: post.value.excerpt || post.value.title },
-    { property: 'og:image', content: post.value.featured_image },
-    { property: 'og:url', content: window.location.href },
-    { property: 'og:type', content: 'article' },
-    { name: 'twitter:card', content: 'summary_large_image' },
-    { name: 'twitter:title', content: post.value.title },
-    { name: 'twitter:description', content: post.value.excerpt || post.value.title },
-    { name: 'twitter:image', content: post.value.featured_image }
-  ]
-  
-  metaTags.forEach(tag => {
-    if (tag.content) {
-      const meta = document.createElement('meta')
-      if (tag.name) meta.name = tag.name
-      if (tag.property) meta.property = tag.property
-      meta.content = tag.content
-      meta.setAttribute('data-post-meta', 'true')
-      document.head.appendChild(meta)
-    }
-  })
 }
 
 onMounted(() => {
   loadPost()
 })
 
-onUnmounted(() => {
-  // Clean up meta tags
-  const metaTags = document.querySelectorAll('meta[data-post-meta]')
-  metaTags.forEach(tag => tag.remove())
-  
-  // Reset page title
-  document.title = 'BlogCMS'
-})
-
 // Watch for route changes
 watch(() => route.params.slug, () => {
   if (route.params.slug) {
     loadPost()
-  }
-})
-
-// Update meta tags when post loads
-watch(post, () => {
-  if (post.value) {
-    updateMetaTags()
   }
 })
 </script>

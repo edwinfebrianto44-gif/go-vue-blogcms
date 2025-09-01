@@ -94,6 +94,35 @@ func AdminOnly() gin.HandlerFunc {
 	}
 }
 
+// Author or admin middleware - allows access for authors and admins
+func AuthorOrAdminMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("user_role")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+				Success: false,
+				Error:   "Authentication required",
+				Code:    "ERR_AUTH_REQUIRED",
+				Details: "Please authenticate to access this endpoint",
+			})
+			c.Abort()
+			return
+		}
+
+		if role != "admin" && role != "author" {
+			c.JSON(http.StatusForbidden, models.ErrorResponse{
+				Success: false,
+				Error:   "Author or admin access required",
+				Code:    "ERR_AUTH_INSUFFICIENT_PERMISSIONS",
+				Details: "This endpoint requires author or administrator privileges",
+			})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 // Owner or admin middleware - allows access if user owns the resource or is admin
 func OwnerOrAdminMiddleware(getResourceOwnerID func(*gin.Context) (uint, error)) gin.HandlerFunc {
 	return func(c *gin.Context) {

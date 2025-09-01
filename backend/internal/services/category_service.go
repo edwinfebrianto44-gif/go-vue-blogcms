@@ -17,6 +17,7 @@ type CategoryService interface {
 	Update(id uint, req *models.UpdateCategoryRequest) (*models.Category, error)
 	Delete(id uint) error
 	List(page, perPage int) ([]models.Category, int64, error)
+	Search(req *models.CategorySearchRequest) ([]models.Category, int64, error)
 }
 
 type categoryService struct {
@@ -94,4 +95,8 @@ func (s *categoryService) Delete(id uint) error {
 
 func (s *categoryService) List(page, perPage int) ([]models.Category, int64, error) {
 	return s.categoryRepo.List(page, perPage)
+}
+
+func (s *categoryService) Search(req *models.CategorySearchRequest) ([]models.Category, int64, error) {
+	return s.categoryRepo.Search(req)
 }

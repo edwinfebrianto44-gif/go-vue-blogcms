@@ -107,13 +107,20 @@ func (h *CategoryHandler) Delete(c *gin.Context) {
 
 func (h *CategoryHandler) List(c *gin.Context) {
 	page, perPage := utils.GetPaginationParams(c)
+	
+	searchReq := &models.CategorySearchRequest{
+		Page:  page,
+		Limit: perPage,
+		Sort:  c.Query("sort"),
+		Query: c.Query("q"),
+	}
 
-	categories, total, err := h.categoryService.List(page, perPage)
+	categories, total, err := h.categoryService.Search(searchReq)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, utils.ErrorResponse("Failed to retrieve categories", err.Error()))
 		return
 	}
 
-	response := utils.PaginationResponse(categories, total, page, perPage)
-	c.JSON(http.StatusOK, utils.SuccessResponse("Categories retrieved successfully", response))
+	response := utils.PaginatedAPIResponse(categories, total, page, perPage, "Categories retrieved successfully")
+	c.JSON(http.StatusOK, response)
 }

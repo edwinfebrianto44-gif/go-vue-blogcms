@@ -186,7 +186,8 @@ const handleLogin = async () => {
     }
     
     // Redirect to intended page or dashboard
-    const redirect = route.query.redirect || '/dashboard'
+    const redirect = route.query.redirect || localStorage.getItem('redirectPath') || '/dashboard'
+    localStorage.removeItem('redirectPath') // Clean up stored redirect
     router.push(redirect)
   } else {
     errorMessage.value = result.message

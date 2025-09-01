@@ -33,8 +33,13 @@ RUN apk --no-cache add ca-certificates tzdata && \
 # Set timezone ke Asia/Jakarta
 ENV TZ=Asia/Jakarta
 
-# Create app directory
+# Create app directory and storage directory
 WORKDIR /app
+
+# Create storage directories with proper permissions
+RUN mkdir -p /app/storage/uploads && \
+    chown -R appuser:appgroup /app/storage && \
+    chmod -R 755 /app/storage
 
 # Copy binary dari builder stage
 COPY --from=builder /app/main .

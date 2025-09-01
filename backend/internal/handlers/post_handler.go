@@ -116,26 +116,35 @@ func (h *PostHandler) Delete(c *gin.Context) {
 
 func (h *PostHandler) List(c *gin.Context) {
 	page, perPage := utils.GetPaginationParams(c)
-
-	// Build filters
-	filters := make(map[string]interface{})
-	if status := c.Query("status"); status != "" {
-		filters["status"] = status
+	
+	searchReq := &models.PostSearchRequest{
+		Page:  page,
+		Limit: perPage,
+		Sort:  c.Query("sort"),
+		Query: c.Query("q"),
 	}
+	
+	// Parse category filter
 	if categoryID := c.Query("category_id"); categoryID != "" {
 		if id, err := strconv.ParseUint(categoryID, 10, 32); err == nil {
-			filters["category_id"] = uint(id)
+			catID := uint(id)
+			searchReq.CategoryID = &catID
 		}
 	}
+	
+	// Parse status filter
+	if status := c.Query("status"); status != "" {
+		searchReq.Status = status
+	}
 
-	posts, total, err := h.postService.List(page, perPage, filters)
+	posts, total, err := h.postService.Search(searchReq)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, utils.ErrorResponse("Failed to retrieve posts", err.Error()))
 		return
 	}
 
-	response := utils.PaginationResponse(posts, total, page, perPage)
-	c.JSON(http.StatusOK, utils.SuccessResponse("Posts retrieved successfully", response))
+	response := utils.PaginatedAPIResponse(posts, total, page, perPage, "Posts retrieved successfully")
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *PostHandler) GetByAuthor(c *gin.Context) {

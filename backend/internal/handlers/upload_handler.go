@@ -1,22 +1,27 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
-	"os"
+	"path/filepath"
+	"strings"
 
+	"backend/internal/config"
 	"backend/internal/services"
-	"backend/internal/utils"
+	"backend/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 type UploadHandler struct {
 	storageService services.StorageService
+	config         *config.Config
 }
 
-func NewUploadHandler(storageService services.StorageService) *UploadHandler {
+func NewUploadHandler(storageService services.StorageService, cfg *config.Config) *UploadHandler {
 	return &UploadHandler{
 		storageService: storageService,
+		config:         cfg,
 	}
 }
 
@@ -38,20 +43,20 @@ func (h *UploadHandler) UploadImage(c *gin.Context) {
 	// Get user ID from context (set by auth middleware)
 	userIDInterface, exists := c.Get("user_id")
 	if !exists {
-		utils.ErrorResponse(c, http.StatusUnauthorized, "User not authenticated")
+		utils.ErrorResponse(c, http.StatusUnauthorized, "User not authenticated", "ERR_AUTH_REQUIRED")
 		return
 	}
 
 	userID, ok := userIDInterface.(uint)
 	if !ok {
-		utils.ErrorResponse(c, http.StatusUnauthorized, "Invalid user ID")
+		utils.ErrorResponse(c, http.StatusUnauthorized, "Invalid user ID", "ERR_AUTH_INVALID_USER")
 		return
 	}
 
 	// Get uploaded file
 	fileHeader, err := c.FormFile("image")
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "No image file provided")
+		utils.ErrorResponse(c, http.StatusBadRequest, "No image file provided", "ERR_NO_FILE")
 		return
 	}
 
@@ -59,11 +64,11 @@ func (h *UploadHandler) UploadImage(c *gin.Context) {
 	uploadResponse, err := h.storageService.UploadFile(fileHeader, userID)
 	if err != nil {
 		// Check if it's a validation error
-		if err.Error() == "file size exceeds maximum allowed size of 5MB" {
-			utils.ErrorResponse(c, http.StatusRequestEntityTooLarge, err.Error())
+		if strings.Contains(err.Error(), "exceeds maximum allowed size") {
+			utils.ErrorResponse(c, http.StatusRequestEntityTooLarge, err.Error(), "ERR_FILE_TOO_LARGE")
 			return
 		}
-		utils.ErrorResponse(c, http.StatusBadRequest, err.Error())
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), "ERR_UPLOAD_FAILED")
 		return
 	}
 
@@ -79,11 +84,12 @@ func (h *UploadHandler) UploadImage(c *gin.Context) {
 // @Router /uploads/info [get]
 func (h *UploadHandler) GetUploadInfo(c *gin.Context) {
 	info := gin.H{
-		"max_file_size":      "5MB",
-		"max_file_size_bytes": services.GetImageSizeLimit(),
+		"max_file_size":      fmt.Sprintf("%d bytes", h.config.Storage.MaxFileSize),
+		"max_file_size_mb":   float64(h.config.Storage.MaxFileSize) / (1024 * 1024),
+		"max_file_size_bytes": h.config.Storage.MaxFileSize,
 		"allowed_types":      services.GetAllowedImageTypes(),
 		"allowed_mime_types": services.GetAllowedMimeTypes(),
-		"storage_driver":     getStorageDriver(),
+		"storage_driver":     h.config.Storage.Driver,
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -111,26 +117,26 @@ func (h *UploadHandler) DeleteImage(c *gin.Context) {
 	// Get user role from context
 	userRoleInterface, exists := c.Get("user_role")
 	if !exists {
-		utils.ErrorResponse(c, http.StatusUnauthorized, "User not authenticated")
+		utils.ErrorResponse(c, http.StatusUnauthorized, "User not authenticated", "ERR_AUTH_REQUIRED")
 		return
 	}
 
 	userRole, ok := userRoleInterface.(string)
 	if !ok || userRole != "admin" {
-		utils.ErrorResponse(c, http.StatusForbidden, "Admin access required")
+		utils.ErrorResponse(c, http.StatusForbidden, "Admin access required", "ERR_AUTH_ADMIN_REQUIRED")
 		return
 	}
 
 	filename := c.Param("filename")
 	if filename == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "Filename is required")
+		utils.ErrorResponse(c, http.StatusBadRequest, "Filename is required", "ERR_MISSING_FILENAME")
 		return
 	}
 
 	// Delete file using storage service
 	err := h.storageService.DeleteFile(filename)
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to delete file")
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to delete file", "ERR_DELETE_FAILED")
 		return
 	}
 
@@ -152,19 +158,18 @@ func (h *UploadHandler) DeleteImage(c *gin.Context) {
 func (h *UploadHandler) ServeLocalImage(c *gin.Context) {
 	filename := c.Param("filename")
 	if filename == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "Filename is required")
+		utils.ErrorResponse(c, http.StatusBadRequest, "Filename is required", "ERR_MISSING_FILENAME")
 		return
 	}
 
 	// Only serve files for local storage
-	if getStorageDriver() != "local" {
-		utils.ErrorResponse(c, http.StatusNotFound, "File not found")
+	if h.config.Storage.Driver != "local" {
+		utils.ErrorResponse(c, http.StatusNotFound, "File not found", "ERR_FILE_NOT_FOUND")
 		return
 	}
 
-	// Get upload directory
-	uploadDir := getUploadDir()
-	filePath := uploadDir + "/" + filename
+	// Create file path
+	filePath := filepath.Join(h.config.Storage.UploadDir, filename)
 
 	// Set cache headers for images
 	c.Header("Cache-Control", "public, max-age=31536000") // 1 year
@@ -172,23 +177,6 @@ func (h *UploadHandler) ServeLocalImage(c *gin.Context) {
 
 	// Serve the file
 	c.File(filePath)
-}
-
-// Helper functions
-func getStorageDriver() string {
-	driver := "local" // default
-	if envDriver := os.Getenv("STORAGE_DRIVER"); envDriver != "" {
-		driver = envDriver
-	}
-	return driver
-}
-
-func getUploadDir() string {
-	uploadDir := "./storage/uploads" // default
-	if envDir := os.Getenv("UPLOAD_DIR"); envDir != "" {
-		uploadDir = envDir
-	}
-	return uploadDir
 }
 
 // Routes setup

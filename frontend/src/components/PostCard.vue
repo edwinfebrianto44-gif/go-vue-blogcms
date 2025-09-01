@@ -2,11 +2,13 @@
   <article class="card overflow-hidden hover:shadow-md transition-shadow">
     <!-- Featured Image -->
     <div class="aspect-w-16 aspect-h-9 bg-secondary-200">
-      <img
+      <LazyImage
         v-if="post.featured_image"
         :src="post.featured_image"
         :alt="post.title"
         class="object-cover w-full h-48"
+        loading-class="bg-secondary-200 animate-pulse"
+        error-class="bg-secondary-100 flex items-center justify-center h-48"
       />
       <div v-else class="flex items-center justify-center h-48 bg-secondary-100">
         <svg class="h-12 w-12 text-secondary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -79,6 +81,7 @@
 <script setup>
 import { RouterLink } from 'vue-router'
 import { format, parseISO } from 'date-fns'
+import LazyImage from '@/components/ui/LazyImage.vue'
 
 defineProps({
   post: {

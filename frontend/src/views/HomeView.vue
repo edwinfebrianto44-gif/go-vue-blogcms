@@ -133,6 +133,7 @@ import { ref, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { usePostsStore } from '@/stores/posts'
 import { useCategoriesStore } from '@/stores/categories'
+import { useSEO, createWebsiteJsonLd, createOrganizationJsonLd } from '@/composables/useSEO'
 import PostCard from '@/components/PostCard.vue'
 
 const postsStore = usePostsStore()
@@ -140,6 +141,16 @@ const categoriesStore = useCategoriesStore()
 
 const featuredPosts = ref([])
 const categories = ref([])
+
+// SEO Configuration for Homepage
+useSEO({
+  title: 'Welcome to Blog CMS',
+  description: 'Discover amazing stories, insights, and knowledge from our community of writers. Join our blogging platform and share your thoughts with the world.',
+  url: '/',
+  type: 'website',
+  tags: ['blog', 'cms', 'writing', 'community', 'articles', 'publishing'],
+  canonical: '/'
+})
 
 onMounted(async () => {
   try {
@@ -149,6 +160,15 @@ onMounted(async () => {
 
     // Fetch categories
     categories.value = await categoriesStore.fetchCategories()
+    
+    // Add structured data for homepage
+    const websiteSchema = createWebsiteJsonLd()
+    const organizationSchema = createOrganizationJsonLd()
+    
+    // Inject JSON-LD into head
+    document.head.appendChild(websiteSchema)
+    document.head.appendChild(organizationSchema)
+    
   } catch (error) {
     console.error('Failed to fetch data:', error)
     if (window.toast) {

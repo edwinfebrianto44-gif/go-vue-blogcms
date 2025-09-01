@@ -17,18 +17,21 @@ type PostService interface {
 	Update(id uint, req *models.UpdatePostRequest, userID uint, userRole string) (*models.Post, error)
 	Delete(id uint, userID uint, userRole string) error
 	List(page, perPage int, filters map[string]interface{}) ([]models.Post, int64, error)
+	Search(req *models.PostSearchRequest) ([]models.Post, int64, error)
 	GetByAuthor(authorID uint, page, perPage int) ([]models.Post, int64, error)
 	GetByCategory(categoryID uint, page, perPage int) ([]models.Post, int64, error)
 }
 
 type postService struct {
 	postRepo     repositories.PostRepository
+	userRepo     repositories.UserRepository
 	categoryRepo repositories.CategoryRepository
 }
 
-func NewPostService(postRepo repositories.PostRepository, categoryRepo repositories.CategoryRepository) PostService {
+func NewPostService(postRepo repositories.PostRepository, userRepo repositories.UserRepository, categoryRepo repositories.CategoryRepository) PostService {
 	return &postService{
 		postRepo:     postRepo,
+		userRepo:     userRepo,
 		categoryRepo: categoryRepo,
 	}
 }
@@ -137,6 +140,10 @@ func (s *postService) Delete(id uint, userID uint, userRole string) error {
 
 func (s *postService) List(page, perPage int, filters map[string]interface{}) ([]models.Post, int64, error) {
 	return s.postRepo.List(page, perPage, filters)
+}
+
+func (s *postService) Search(req *models.PostSearchRequest) ([]models.Post, int64, error) {
+	return s.postRepo.Search(req)
 }
 
 func (s *postService) GetByAuthor(authorID uint, page, perPage int) ([]models.Post, int64, error) {

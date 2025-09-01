@@ -41,13 +41,19 @@ CREATE TABLE posts (
     slug VARCHAR(255) NOT NULL UNIQUE,
     content TEXT NOT NULL,
     excerpt TEXT,
+    thumbnail_url VARCHAR(500),
     category_id INT NOT NULL,
     author_id INT NOT NULL,
     status ENUM('draft', 'published', 'archived') DEFAULT 'draft',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
-    FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
+    
+    -- Full-text search index for title and content
+    FULLTEXT KEY idx_posts_fulltext (title, content),
+    FULLTEXT KEY idx_posts_title_fulltext (title),
+    FULLTEXT KEY idx_posts_content_fulltext (content)
 );
 
 -- ====================================
@@ -68,12 +74,29 @@ CREATE TABLE comments (
 -- ====================================
 -- Create Indexes for better performance
 -- ====================================
+
+-- Posts table indexes
 CREATE INDEX idx_posts_category_id ON posts(category_id);
 CREATE INDEX idx_posts_author_id ON posts(author_id);
 CREATE INDEX idx_posts_status ON posts(status);
+CREATE INDEX idx_posts_created_at ON posts(created_at);
+CREATE INDEX idx_posts_updated_at ON posts(updated_at);
+CREATE INDEX idx_posts_status_created_at ON posts(status, created_at);
+CREATE INDEX idx_posts_category_status ON posts(category_id, status);
+CREATE INDEX idx_posts_author_status ON posts(author_id, status);
+
+-- Categories table indexes  
+CREATE INDEX idx_categories_created_at ON categories(created_at);
+
+-- Comments table indexes
 CREATE INDEX idx_comments_post_id ON comments(post_id);
 CREATE INDEX idx_comments_user_id ON comments(user_id);
 CREATE INDEX idx_comments_status ON comments(status);
+CREATE INDEX idx_comments_created_at ON comments(created_at);
+
+-- Users table indexes
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_users_created_at ON users(created_at);
 
 -- ====================================
 -- Insert Data Dummy

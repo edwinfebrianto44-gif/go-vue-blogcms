@@ -64,6 +64,13 @@ func GetPaginationParams(c *gin.Context) (page int, perPage int) {
 		}
 	}
 
+	// Also support 'limit' parameter
+	if limit := c.Query("limit"); limit != "" {
+		if parsed, err := strconv.Atoi(limit); err == nil && parsed > 0 && parsed <= 100 {
+			perPage = parsed
+		}
+	}
+
 	return page, perPage
 }
 
@@ -76,5 +83,22 @@ func PaginationResponse(data interface{}, total int64, page, perPage int) models
 		Page:       page,
 		PerPage:    perPage,
 		TotalPages: totalPages,
+	}
+}
+
+// Enhanced pagination response with meta structure
+func PaginatedAPIResponse(data interface{}, total int64, page, limit int, message string) models.PaginatedAPIResponse {
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+	
+	return models.PaginatedAPIResponse{
+		Success: true,
+		Message: message,
+		Data:    data,
+		Meta: models.MetaData{
+			Page:       page,
+			Limit:      limit,
+			Total:      total,
+			TotalPages: totalPages,
+		},
 	}
 }

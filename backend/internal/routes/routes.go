@@ -17,6 +17,7 @@ func SetupRoutes(
 	postHandler *handlers.PostHandler,
 	categoryHandler *handlers.CategoryHandler,
 	commentHandler *handlers.CommentHandler,
+	uploadHandler *handlers.UploadHandler,
 	docsHandler *handlers.DocsHandler,
 	jwtService services.JWTService,
 ) {
@@ -123,6 +124,23 @@ func SetupRoutes(
 			// Owner or admin can update/delete
 			commentsProtected.PUT("/:id", middleware.OwnerOrAdminMiddleware(getCommentOwnerID), commentHandler.Update)
 			commentsProtected.DELETE("/:id", middleware.OwnerOrAdminMiddleware(getCommentOwnerID), commentHandler.Delete)
+		}
+	}
+
+	// Upload routes (protected, author/admin only)
+	uploads := v1.Group("/uploads")
+	{
+		// Public routes
+		uploads.GET("/info", uploadHandler.GetUploadInfo)
+		uploads.GET("/:filename", uploadHandler.ServeLocalImage)
+		
+		// Protected routes (author/admin only)
+		uploadsProtected := uploads.Group("")
+		uploadsProtected.Use(middleware.AuthMiddleware(jwtService))
+		uploadsProtected.Use(middleware.AuthorOrAdminMiddleware())
+		{
+			uploadsProtected.POST("/images", uploadHandler.UploadImage)
+			uploadsProtected.DELETE("/images/:filename", uploadHandler.DeleteImage)
 		}
 	}
 

@@ -8,6 +8,7 @@ import (
 	"backend/internal/repositories"
 	"backend/internal/routes"
 	"backend/internal/services"
+	"fmt"
 	"log"
 
 	"github.com/gin-gonic/gin"
@@ -18,7 +19,15 @@ func main() {
 	cfg := config.LoadConfig()
 
 	// Initialize database
-	db, err := database.Connect(cfg.DatabaseURL)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		cfg.Database.User,
+		cfg.Database.Password,
+		cfg.Database.Host,
+		cfg.Database.Port,
+		cfg.Database.Name,
+	)
+
+	db, err := database.Connect(dsn)
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
@@ -41,14 +50,14 @@ func main() {
 	postService := services.NewPostService(postRepo, userRepo, categoryRepo)
 	categoryService := services.NewCategoryService(categoryRepo)
 	commentService := services.NewCommentService(commentRepo, postRepo, userRepo)
-	storageService := services.NewStorageService()
+	storageService := services.NewStorageService(cfg)
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authService)
 	postHandler := handlers.NewPostHandler(postService)
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 	commentHandler := handlers.NewCommentHandler(commentService)
-	uploadHandler := handlers.NewUploadHandler(storageService)
+	uploadHandler := handlers.NewUploadHandler(storageService, cfg)
 	docsHandler := handlers.NewDocsHandler()
 
 	// Setup Swagger info
@@ -75,9 +84,10 @@ func main() {
 	routes.SetupRoutes(r, authHandler, postHandler, categoryHandler, commentHandler, uploadHandler, docsHandler, jwtService)
 
 	// Start server
-	log.Printf("🚀 BlogCMS Server starting on port %s", cfg.Port)
-	log.Printf("🌍 Environment: %s", cfg.Environment)
-	log.Printf("📚 API Documentation: http://localhost:%s/api/v1/docs/swagger/", cfg.Port)
+	log.Printf("🚀 BlogCMS Server starting on port %s", cfg.Server.Port)
+	log.Printf("🌍 Environment: %s", cfg.App.Environment)
+	log.Printf("📚 API Documentation: http://localhost:%s/api/v1/docs/swagger/", cfg.Server.Port)
 	log.Printf("🔐 Security features: JWT with refresh tokens, CORS, Rate limiting, Validation")
-	log.Fatal(r.Run(":" + cfg.Port))
+	log.Printf("📁 Storage driver: %s", cfg.Storage.Driver)
+	log.Fatal(r.Run(":" + cfg.Server.Port))
 }

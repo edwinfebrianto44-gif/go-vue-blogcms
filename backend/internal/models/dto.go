@@ -124,16 +124,42 @@ type PaginationResponse struct {
 	TotalPages int         `json:"total_pages"`
 }
 
+// Enhanced pagination response with meta structure
+type PaginatedAPIResponse struct {
+	Success bool        `json:"success"`
+	Message string      `json:"message,omitempty"`
+	Data    interface{} `json:"data"`
+	Meta    MetaData    `json:"meta"`
+	Error   string      `json:"error,omitempty"`
+	Code    string      `json:"code,omitempty"`
+}
+
+type MetaData struct {
+	Page       int `json:"page"`
+	Limit      int `json:"limit"`
+	Total      int64 `json:"total"`
+	TotalPages int `json:"total_pages"`
+}
+
 // Search and Filter DTOs
 type PostSearchRequest struct {
-	Query      string `form:"q" validate:"omitempty,min=2,max=100"`
-	CategoryID uint   `form:"category_id" validate:"omitempty,gt=0"`
-	AuthorID   uint   `form:"author_id" validate:"omitempty,gt=0"`
-	Status     string `form:"status" validate:"omitempty,oneof=draft published archived"`
+	Query      string `form:"q" validate:"omitempty,min=2,max=100" binding:"omitempty,min=2,max=100"`
+	CategoryID uint   `form:"category_id" validate:"omitempty,gt=0" binding:"omitempty,gt=0"`
+	AuthorID   uint   `form:"author_id" validate:"omitempty,gt=0" binding:"omitempty,gt=0"`
+	Status     string `form:"status" validate:"omitempty,oneof=draft published archived" binding:"omitempty,oneof=draft published archived"`
 	Page       int    `form:"page" validate:"omitempty,min=1" binding:"omitempty,min=1"`
 	Limit      int    `form:"limit" validate:"omitempty,min=1,max=100" binding:"omitempty,min=1,max=100"`
-	SortBy     string `form:"sort_by" validate:"omitempty,oneof=created_at updated_at title"`
-	SortOrder  string `form:"sort_order" validate:"omitempty,oneof=asc desc"`
+	Sort       string `form:"sort" validate:"omitempty,oneof=created_at updated_at title id" binding:"omitempty,oneof=created_at updated_at title id"`
+	Order      string `form:"order" validate:"omitempty,oneof=asc desc" binding:"omitempty,oneof=asc desc"`
+}
+
+// Category search request
+type CategorySearchRequest struct {
+	Query string `form:"q" validate:"omitempty,min=2,max=100" binding:"omitempty,min=2,max=100"`
+	Page  int    `form:"page" validate:"omitempty,min=1" binding:"omitempty,min=1"`
+	Limit int    `form:"limit" validate:"omitempty,min=1,max=100" binding:"omitempty,min=1,max=100"`
+	Sort  string `form:"sort" validate:"omitempty,oneof=created_at updated_at name id" binding:"omitempty,oneof=created_at updated_at name id"`
+	Order string `form:"order" validate:"omitempty,oneof=asc desc" binding:"omitempty,oneof=asc desc"`
 }
 
 // JWT Claims

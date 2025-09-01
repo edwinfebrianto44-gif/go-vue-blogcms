@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"backend/internal/config"
 	"backend/internal/models"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -26,100 +27,60 @@ type StorageService interface {
 }
 
 type LocalStorageService struct {
-	uploadDir string
-	baseURL   string
+	config *config.StorageConfig
 }
 
 type S3StorageService struct {
-	client     *s3.S3
-	bucketName string
-	region     string
-	baseURL    string
+	client *s3.S3
+	config *config.StorageConfig
 }
 
-func NewStorageService() StorageService {
-	driver := os.Getenv("STORAGE_DRIVER")
-	if driver == "" {
-		driver = "local"
-	}
-
-	switch driver {
+func NewStorageService(cfg *config.Config) StorageService {
+	switch cfg.Storage.Driver {
 	case "s3":
-		return NewS3StorageService()
+		return NewS3StorageService(&cfg.Storage)
 	default:
-		return NewLocalStorageService()
+		return NewLocalStorageService(&cfg.Storage)
 	}
 }
 
-func NewLocalStorageService() *LocalStorageService {
-	uploadDir := os.Getenv("UPLOAD_DIR")
-	if uploadDir == "" {
-		uploadDir = "./storage/uploads"
-	}
-
-	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
-	}
-
+func NewLocalStorageService(cfg *config.StorageConfig) *LocalStorageService {
 	// Create upload directory if it doesn't exist
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+	if err := os.MkdirAll(cfg.UploadDir, 0755); err != nil {
 		panic(fmt.Sprintf("Failed to create upload directory: %v", err))
 	}
 
 	return &LocalStorageService{
-		uploadDir: uploadDir,
-		baseURL:   baseURL,
+		config: cfg,
 	}
 }
 
-func NewS3StorageService() *S3StorageService {
-	region := os.Getenv("AWS_REGION")
-	if region == "" {
-		region = "us-east-1"
-	}
-
-	endpoint := os.Getenv("S3_ENDPOINT") // For MinIO compatibility
-	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
-	secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
-	bucketName := os.Getenv("S3_BUCKET_NAME")
-
-	if bucketName == "" {
+func NewS3StorageService(cfg *config.StorageConfig) *S3StorageService {
+	if cfg.S3Bucket == "" {
 		panic("S3_BUCKET_NAME is required when using S3 storage")
 	}
 
-	config := &aws.Config{
-		Region: aws.String(region),
+	awsConfig := &aws.Config{
+		Region: aws.String(cfg.S3Region),
 	}
 
-	if accessKey != "" && secretKey != "" {
-		config.Credentials = credentials.NewStaticCredentials(accessKey, secretKey, "")
+	if cfg.S3AccessKey != "" && cfg.S3SecretKey != "" {
+		awsConfig.Credentials = credentials.NewStaticCredentials(cfg.S3AccessKey, cfg.S3SecretKey, "")
 	}
 
-	if endpoint != "" {
-		config.Endpoint = aws.String(endpoint)
-		config.S3ForcePathStyle = aws.Bool(true) // Required for MinIO
+	if cfg.S3Endpoint != "" {
+		awsConfig.Endpoint = aws.String(cfg.S3Endpoint)
+		awsConfig.S3ForcePathStyle = aws.Bool(cfg.S3ForcePathStyle)
 	}
 
-	sess, err := session.NewSession(config)
+	sess, err := session.NewSession(awsConfig)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create S3 session: %v", err))
 	}
 
-	baseURL := os.Getenv("S3_BASE_URL")
-	if baseURL == "" {
-		if endpoint != "" {
-			baseURL = fmt.Sprintf("%s/%s", endpoint, bucketName)
-		} else {
-			baseURL = fmt.Sprintf("https://%s.s3.%s.amazonaws.com", bucketName, region)
-		}
-	}
-
 	return &S3StorageService{
-		client:     s3.New(sess),
-		bucketName: bucketName,
-		region:     region,
-		baseURL:    baseURL,
+		client: s3.New(sess),
+		config: cfg,
 	}
 }
 
@@ -135,7 +96,7 @@ func (s *LocalStorageService) UploadFile(fileHeader *multipart.FileHeader, userI
 	filename := fmt.Sprintf("%s_%d%s", uuid.New().String(), time.Now().Unix(), ext)
 
 	// Create file path
-	filePath := filepath.Join(s.uploadDir, filename)
+	filePath := filepath.Join(s.config.UploadDir, filename)
 
 	// Open uploaded file
 	src, err := fileHeader.Open()
@@ -157,7 +118,7 @@ func (s *LocalStorageService) UploadFile(fileHeader *multipart.FileHeader, userI
 	}
 
 	// Generate public URL
-	url := fmt.Sprintf("%s/uploads/%s", s.baseURL, filename)
+	url := fmt.Sprintf("%s/uploads/%s", s.config.BaseURL, filename)
 
 	return &models.UploadResponse{
 		Success:  true,
@@ -170,19 +131,18 @@ func (s *LocalStorageService) UploadFile(fileHeader *multipart.FileHeader, userI
 }
 
 func (s *LocalStorageService) DeleteFile(filename string) error {
-	filePath := filepath.Join(s.uploadDir, filename)
+	filePath := filepath.Join(s.config.UploadDir, filename)
 	return os.Remove(filePath)
 }
 
 func (s *LocalStorageService) GetFileURL(filename string) string {
-	return fmt.Sprintf("%s/uploads/%s", s.baseURL, filename)
+	return fmt.Sprintf("%s/uploads/%s", s.config.BaseURL, filename)
 }
 
 func (s *LocalStorageService) ValidateImageFile(fileHeader *multipart.FileHeader) error {
-	// Check file size (max 5MB)
-	maxSize := int64(5 * 1024 * 1024) // 5MB
-	if fileHeader.Size > maxSize {
-		return fmt.Errorf("file size exceeds maximum allowed size of 5MB")
+	// Check file size
+	if fileHeader.Size > s.config.MaxFileSize {
+		return fmt.Errorf("file size exceeds maximum allowed size of %d bytes", s.config.MaxFileSize)
 	}
 
 	// Check file extension
@@ -246,7 +206,7 @@ func (s *S3StorageService) UploadFile(fileHeader *multipart.FileHeader, userID u
 
 	// Upload to S3
 	_, err = s.client.PutObject(&s3.PutObjectInput{
-		Bucket:      aws.String(s.bucketName),
+		Bucket:      aws.String(s.config.S3Bucket),
 		Key:         aws.String(filename),
 		Body:        src,
 		ContentType: aws.String(fileHeader.Header.Get("Content-Type")),
@@ -258,7 +218,14 @@ func (s *S3StorageService) UploadFile(fileHeader *multipart.FileHeader, userID u
 	}
 
 	// Generate public URL
-	url := fmt.Sprintf("%s/%s", s.baseURL, filename)
+	var url string
+	if s.config.S3BaseURL != "" {
+		url = fmt.Sprintf("%s/%s", s.config.S3BaseURL, filename)
+	} else if s.config.S3Endpoint != "" {
+		url = fmt.Sprintf("%s/%s/%s", s.config.S3Endpoint, s.config.S3Bucket, filename)
+	} else {
+		url = fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s.config.S3Bucket, s.config.S3Region, filename)
+	}
 
 	return &models.UploadResponse{
 		Success:  true,
@@ -272,25 +239,34 @@ func (s *S3StorageService) UploadFile(fileHeader *multipart.FileHeader, userID u
 
 func (s *S3StorageService) DeleteFile(filename string) error {
 	_, err := s.client.DeleteObject(&s3.DeleteObjectInput{
-		Bucket: aws.String(s.bucketName),
+		Bucket: aws.String(s.config.S3Bucket),
 		Key:    aws.String(filename),
 	})
 	return err
 }
 
 func (s *S3StorageService) GetFileURL(filename string) string {
-	return fmt.Sprintf("%s/%s", s.baseURL, filename)
+	if s.config.S3BaseURL != "" {
+		return fmt.Sprintf("%s/%s", s.config.S3BaseURL, filename)
+	} else if s.config.S3Endpoint != "" {
+		return fmt.Sprintf("%s/%s/%s", s.config.S3Endpoint, s.config.S3Bucket, filename)
+	} else {
+		return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s.config.S3Bucket, s.config.S3Region, filename)
+	}
 }
 
 func (s *S3StorageService) ValidateImageFile(fileHeader *multipart.FileHeader) error {
 	// Reuse the same validation logic as local storage
-	localStorage := &LocalStorageService{}
+	localStorage := &LocalStorageService{config: s.config}
 	return localStorage.ValidateImageFile(fileHeader)
 }
 
 // Utility functions
-func GetImageSizeLimit() int64 {
-	return 5 * 1024 * 1024 // 5MB
+func GetImageSizeLimit(cfg *config.StorageConfig) int64 {
+	if cfg != nil {
+		return cfg.MaxFileSize
+	}
+	return 5 * 1024 * 1024 // 5MB default
 }
 
 func GetAllowedImageTypes() []string {
