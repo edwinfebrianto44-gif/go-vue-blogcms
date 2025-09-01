@@ -72,7 +72,7 @@ func main() {
 	r.Use(middleware.AdvancedRateLimitMiddleware())
 
 	// Setup routes with enhanced security
-	routes.SetupRoutes(r, authHandler, postHandler, categoryHandler, commentHandler, docsHandler, jwtService)
+	routes.SetupRoutes(r, authHandler, postHandler, categoryHandler, commentHandler, uploadHandler, docsHandler, jwtService)
 
 	// Start server
 	log.Printf("🚀 BlogCMS Server starting on port %s", cfg.Port)
