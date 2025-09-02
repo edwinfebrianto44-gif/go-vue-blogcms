@@ -1,0 +1,380 @@
+name: Frontend CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'frontend/**'
+
+env:
+  NODE_VERSION: '18'
+  VITE_API_URL: ${{ secrets.VITE_API_URL || 'http://localhost:8080/api/v1' }}
+
+jobs:
+  test:
+    name: Test Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Run ESLint
+      working-directory: ./frontend
+      run: npm run lint
+
+    - name: Run type checking
+      working-directory: ./frontend
+      run: npm run type-check
+
+    - name: Run unit tests
+      working-directory: ./frontend
+      run: npm run test:unit
+      env:
+        CI: true
+
+    - name: Run component tests
+      working-directory: ./frontend
+      run: npm run test:component
+      env:
+        CI: true
+
+    - name: Generate test coverage
+      working-directory: ./frontend
+      run: npm run test:coverage
+      env:
+        CI: true
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        directory: ./frontend/coverage
+        flags: frontend
+        name: frontend-coverage
+
+  build:
+    name: Build Frontend
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Build application
+      working-directory: ./frontend
+      run: npm run build
+      env:
+        VITE_API_URL: ${{ secrets.VITE_API_URL }}
+        VITE_APP_TITLE: ${{ secrets.VITE_APP_TITLE || 'BlogCMS' }}
+        VITE_APP_DESCRIPTION: ${{ secrets.VITE_APP_DESCRIPTION || 'Modern Blog Content Management System' }}
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-dist
+        path: frontend/dist/
+        retention-days: 30
+
+    - name: Upload build stats
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-stats
+        path: frontend/dist/stats.html
+        retention-days: 7
+      if: always()
+
+  e2e-test:
+    name: E2E Tests
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: testdb
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache-dependency-path: backend/go.sum
+
+    - name: Download frontend build
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-dist
+        path: frontend/dist/
+
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Install backend dependencies
+      working-directory: ./backend
+      run: go mod download
+
+    - name: Start backend server
+      working-directory: ./backend
+      run: |
+        go build -o bin/server cmd/server/main.go
+        ./bin/server &
+        echo $! > server.pid
+      env:
+        DB_HOST: localhost
+        DB_PORT: 3306
+        DB_USER: root
+        DB_PASS: testpass
+        DB_NAME: testdb
+        JWT_SECRET: test-secret-key
+        PORT: 8080
+
+    - name: Wait for backend
+      run: |
+        timeout 60 bash -c 'until curl -f http://localhost:8080/health; do sleep 2; done'
+
+    - name: Run E2E tests
+      working-directory: ./frontend
+      run: npm run test:e2e
+      env:
+        VITE_API_URL: http://localhost:8080/api/v1
+
+    - name: Stop backend server
+      if: always()
+      working-directory: ./backend
+      run: |
+        if [ -f server.pid ]; then
+          kill $(cat server.pid) || true
+          rm server.pid
+        fi
+
+    - name: Upload E2E test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: e2e-results
+        path: |
+          frontend/test-results/
+          frontend/playwright-report/
+
+  deploy-cdn:
+    name: Deploy to CDN
+    needs: [test, build, e2e-test]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-dist
+        path: frontend/dist/
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+      if: env.DEPLOY_TO_S3 == 'true'
+
+    - name: Deploy to S3
+      if: env.DEPLOY_TO_S3 == 'true'
+      run: |
+        aws s3 sync frontend/dist/ s3://${{ secrets.S3_BUCKET_NAME }}/ \
+          --delete \
+          --cache-control "public, max-age=31536000" \
+          --exclude "*.html" \
+          --exclude "*.json"
+        
+        aws s3 sync frontend/dist/ s3://${{ secrets.S3_BUCKET_NAME }}/ \
+          --delete \
+          --cache-control "public, max-age=0, must-revalidate" \
+          --include "*.html" \
+          --include "*.json"
+      env:
+        DEPLOY_TO_S3: ${{ secrets.DEPLOY_TO_S3 }}
+
+    - name: Invalidate CloudFront
+      if: env.DEPLOY_TO_S3 == 'true' && env.CLOUDFRONT_DISTRIBUTION_ID != ''
+      run: |
+        aws cloudfront create-invalidation \
+          --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+          --paths "/*"
+      env:
+        DEPLOY_TO_S3: ${{ secrets.DEPLOY_TO_S3 }}
+        CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+
+  deploy-vps:
+    name: Deploy to VPS
+    needs: [test, build, e2e-test]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-dist
+        path: frontend/dist/
+
+    - name: Set up SSH
+      uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+    - name: Add VPS to known hosts
+      run: |
+        ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+    - name: Create deployment archive
+      run: |
+        cd frontend
+        tar -czf ../frontend-build.tar.gz dist/
+
+    - name: Upload and deploy to VPS
+      run: |
+        # Upload build archive
+        scp frontend-build.tar.gz ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/
+
+        # Deploy on VPS
+        ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+          # Create backup of current deployment
+          if [ -d /var/www/blogcms ]; then
+            sudo cp -r /var/www/blogcms /var/www/blogcms-backup-$(date +%Y%m%d-%H%M%S)
+          fi
+
+          # Create directory if not exists
+          sudo mkdir -p /var/www/blogcms
+
+          # Extract new build
+          cd /tmp
+          tar -xzf frontend-build.tar.gz
+          
+          # Replace files
+          sudo rm -rf /var/www/blogcms/*
+          sudo cp -r dist/* /var/www/blogcms/
+          
+          # Set permissions
+          sudo chown -R www-data:www-data /var/www/blogcms
+          sudo chmod -R 755 /var/www/blogcms
+
+          # Update nginx configuration
+          sudo cp /opt/blogcms/nginx/nginx.conf /etc/nginx/sites-available/blogcms
+          sudo ln -sf /etc/nginx/sites-available/blogcms /etc/nginx/sites-enabled/
+          
+          # Test nginx configuration
+          sudo nginx -t
+          
+          # Reload nginx
+          sudo systemctl reload nginx
+          
+          # Clean up
+          rm -f /tmp/frontend-build.tar.gz
+          rm -rf /tmp/dist
+
+          # Keep only last 5 backups
+          sudo find /var/www/ -name "blogcms-backup-*" -type d | sort | head -n -5 | sudo xargs rm -rf
+
+          echo "✅ Frontend deployment successful!"
+        EOF
+
+    - name: Health check
+      run: |
+        sleep 5
+        curl -f ${{ secrets.FRONTEND_URL || 'http://' }}${{ secrets.VPS_HOST }} || exit 1
+
+    - name: Notify deployment status
+      if: always()
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "🚀 Frontend deployment to VPS successful!"
+        else
+          echo "❌ Frontend deployment to VPS failed!"
+          exit 1
+        fi
+
+  notify:
+    name: Notify Status
+    needs: [test, build, e2e-test, deploy-cdn, deploy-vps]
+    runs-on: ubuntu-latest
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Notify success
+      if: ${{ needs.test.result == 'success' && needs.build.result == 'success' && needs.e2e-test.result == 'success' && (needs.deploy-cdn.result == 'success' || needs.deploy-cdn.result == 'skipped') && needs.deploy-vps.result == 'success' }}
+      run: |
+        echo "✅ Frontend CI/CD Pipeline Successful!"
+        echo "🧪 Tests: Passed"
+        echo "🔨 Build: Successful"
+        echo "🎭 E2E: Passed"
+        echo "☁️ CDN Deploy: ${{ needs.deploy-cdn.result }}"
+        echo "🚀 VPS Deploy: Successful"
+
+    - name: Notify failure
+      if: ${{ needs.test.result == 'failure' || needs.build.result == 'failure' || needs.e2e-test.result == 'failure' || needs.deploy-cdn.result == 'failure' || needs.deploy-vps.result == 'failure' }}
+      run: |
+        echo "❌ Frontend CI/CD Pipeline Failed!"
+        echo "🧪 Tests: ${{ needs.test.result }}"
+        echo "🔨 Build: ${{ needs.build.result }}"
+        echo "🎭 E2E: ${{ needs.e2e-test.result }}"
+        echo "☁️ CDN Deploy: ${{ needs.deploy-cdn.result }}"
+        echo "🚀 VPS Deploy: ${{ needs.deploy-vps.result }}"
+        exit 1

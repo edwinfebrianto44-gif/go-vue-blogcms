@@ -8,6 +8,7 @@ import (
 	"backend/internal/models"
 
 	"gorm.io/driver/mysql"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -28,10 +29,23 @@ func Connect(dsn string) (*gorm.DB, error) {
 	return db, nil
 }
 
+// ConnectSQLite initializes SQLite database connection for testing
+func ConnectSQLite(dsn string) (*gorm.DB, error) {
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to SQLite database: %w", err)
+	}
+
+	return db, nil
+}
+
 // AutoMigrate runs database migrations for the provided database instance
 func AutoMigrate(db *gorm.DB) error {
 	log.Println("Running database migrations...")
-	
+
 	err := db.AutoMigrate(
 		&models.User{},
 		&models.Category{},
@@ -40,11 +54,11 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.RefreshToken{},
 		&models.FileUpload{},
 	)
-	
+
 	if err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}
-	
+
 	log.Println("Database migrations completed successfully")
 	return nil
 }
@@ -68,11 +82,10 @@ func InitDatabase(cfg *config.Config) {
 	}
 
 	// Set global DB variable for backward compatibility
-	DB = db
 	log.Println("Database connected successfully")
 
 	// Auto migrate the schema
-	if err := AutoMigrate(db); err != nil {
+	if err := AutoMigrate(DB); err != nil {
 		log.Fatal("Failed to auto migrate:", err)
 	}
 }

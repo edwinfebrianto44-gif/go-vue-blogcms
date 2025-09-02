@@ -24,12 +24,81 @@ profile.cov
 go.work
 go.work.sum
 
-# env file
+# Environment files - SECURITY CRITICAL
 .env
+.env.local
+.env.production
+.env.staging
+.env.development
+
+# Production secrets and keys
+secrets/
+keys/
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+
+# Backup files
+backups/
+*.sql
+*.sql.gz
+*.dump
+
+# Log files
+logs/
+*.log
+
+# Uploads and user content
+uploads/
+media/
+files/
+
+# SSL certificates
+ssl/
+certs/
+
+# Docker override files
+docker-compose.override.yml
+docker-compose.production.yml
+docker-compose.staging.yml
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Frontend
 frontend/node_modules/
 frontend/dist/
+frontend/build/
 frontend/.vite-ssg-temp/
+frontend/.nuxt/
+frontend/.next/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Monitoring and metrics
+prometheus/
+grafana/

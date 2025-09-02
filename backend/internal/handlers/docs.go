@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
+	"github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	"github.com/swaggo/gin-swagger/swaggerFiles"
 )
 
 // DocsHandler handles documentation routes
@@ -28,7 +28,7 @@ func (h *DocsHandler) SetupRoutes(rg *gin.RouterGroup) {
 	docs := rg.Group("/docs")
 	{
 		docs.GET("/", h.RedirectToSwagger)
-		docs.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+		docs.GET("/swagger/*any", ginSwagger.WrapHandler(files.Handler))
 		docs.GET("/openapi.yaml", h.ServeOpenAPISpec)
 		docs.GET("/openapi.json", h.ServeOpenAPISpecJSON)
 		docs.GET("/health", h.HealthCheck)
@@ -71,8 +71,8 @@ func (h *DocsHandler) ServeOpenAPISpec(c *gin.Context) {
 func (h *DocsHandler) ServeOpenAPISpecJSON(c *gin.Context) {
 	// For now, redirect to YAML. In a real implementation, you might convert YAML to JSON
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "info",
-		"message": "JSON format not implemented yet. Please use /docs/openapi.yaml",
+		"status":   "info",
+		"message":  "JSON format not implemented yet. Please use /docs/openapi.yaml",
 		"yaml_url": "/api/v1/docs/openapi.yaml",
 	})
 }
@@ -80,17 +80,17 @@ func (h *DocsHandler) ServeOpenAPISpecJSON(c *gin.Context) {
 // HealthCheck provides API health status
 func (h *DocsHandler) HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
+		"status":  "success",
 		"message": "API documentation service is healthy",
 		"data": gin.H{
-			"service":     "BlogCMS API Documentation",
-			"version":     "1.0.0",
-			"swagger_ui":  "/api/v1/docs/swagger/index.html",
+			"service":      "BlogCMS API Documentation",
+			"version":      "1.0.0",
+			"swagger_ui":   "/api/v1/docs/swagger/index.html",
 			"openapi_spec": "/api/v1/docs/openapi.yaml",
 			"endpoints": gin.H{
-				"swagger":     "/api/v1/docs/swagger/",
-				"openapi":     "/api/v1/docs/openapi.yaml",
-				"health":      "/api/v1/docs/health",
+				"swagger": "/api/v1/docs/swagger/",
+				"openapi": "/api/v1/docs/openapi.yaml",
+				"health":  "/api/v1/docs/health",
 			},
 		},
 	})

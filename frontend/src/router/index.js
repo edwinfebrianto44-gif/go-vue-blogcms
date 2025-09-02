@@ -1,37 +1,58 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
+// Preload critical components
+const HomeView = () => import(/* webpackChunkName: "home" */ '@/views/HomeView.vue')
+const PostsView = () => import(/* webpackChunkName: "posts" */ '@/views/PostsView.vue')
+const PostDetailView = () => import(/* webpackChunkName: "post-detail" */ '@/views/PostDetailView.vue')
+
+// Lazy load admin components (less critical)
+const DashboardView = () => import(/* webpackChunkName: "dashboard" */ '@/views/dashboard/DashboardView.vue')
+const DashboardPosts = () => import(/* webpackChunkName: "dashboard-posts" */ '@/views/dashboard/PostsView.vue')
+const PostForm = () => import(/* webpackChunkName: "post-form" */ '@/views/dashboard/PostForm.vue')
+
+// Lazy load auth components
+const LoginView = () => import(/* webpackChunkName: "auth" */ '@/views/auth/LoginView.vue')
+const RegisterView = () => import(/* webpackChunkName: "auth" */ '@/views/auth/RegisterView.vue')
+
+// Lazy load other components
+const CategoryView = () => import(/* webpackChunkName: "category" */ '@/views/CategoryView.vue')
+const NotFoundView = () => import(/* webpackChunkName: "error" */ '@/views/NotFoundView.vue')
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     {
       path: '/',
       name: 'home',
-      component: () => import('@/views/HomeView.vue'),
+      component: HomeView,
       meta: {
-        title: 'Home - Blog CMS'
+        title: 'Home - Blog CMS',
+        preload: true // Preload this route
       }
     },
     {
       path: '/posts',
       name: 'posts',
-      component: () => import('@/views/PostsView.vue'),
+      component: PostsView,
       meta: {
-        title: 'All Posts - Blog CMS'
+        title: 'All Posts - Blog CMS',
+        preload: true // Preload this route
       }
     },
     {
       path: '/posts/:slug',
       name: 'post-detail',
-      component: () => import('@/views/PostDetailView.vue'),
+      component: PostDetailView,
       meta: {
-        title: 'Post - Blog CMS'
+        title: 'Post - Blog CMS',
+        preload: true // Preload this route
       }
     },
     {
       path: '/categories/:slug',
       name: 'category-posts',
-      component: () => import('@/views/CategoryView.vue'),
+      component: CategoryView,
       meta: {
         title: 'Category - Blog CMS'
       }
@@ -39,7 +60,7 @@ const router = createRouter({
     {
       path: '/login',
       name: 'login',
-      component: () => import('@/views/auth/LoginView.vue'),
+      component: LoginView,
       meta: {
         title: 'Login - Blog CMS',
         requiresGuest: true
@@ -48,7 +69,7 @@ const router = createRouter({
     {
       path: '/register',
       name: 'register',
-      component: () => import('@/views/auth/RegisterView.vue'),
+      component: RegisterView,
       meta: {
         title: 'Register - Blog CMS',
         requiresGuest: true
@@ -57,7 +78,7 @@ const router = createRouter({
     {
       path: '/dashboard',
       name: 'dashboard',
-      component: () => import('@/views/dashboard/DashboardView.vue'),
+      component: DashboardView,
       meta: {
         title: 'Dashboard - Blog CMS',
         requiresAuth: true
@@ -66,7 +87,7 @@ const router = createRouter({
     {
       path: '/dashboard/posts',
       name: 'dashboard-posts',
-      component: () => import('@/views/dashboard/PostsView.vue'),
+      component: DashboardPosts,
       meta: {
         title: 'Manage Posts - Dashboard',
         requiresAuth: true
@@ -75,7 +96,7 @@ const router = createRouter({
     {
       path: '/dashboard/posts/create',
       name: 'dashboard-posts-create',
-      component: () => import('@/views/dashboard/PostForm.vue'),
+      component: PostForm,
       meta: {
         title: 'Create Post - Dashboard',
         requiresAuth: true
@@ -84,7 +105,7 @@ const router = createRouter({
     {
       path: '/dashboard/posts/:id/edit',
       name: 'dashboard-posts-edit',
-      component: () => import('@/views/dashboard/PostForm.vue'),
+      component: PostForm,
       meta: {
         title: 'Edit Post - Dashboard',
         requiresAuth: true
@@ -93,7 +114,7 @@ const router = createRouter({
     {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
-      component: () => import('@/views/NotFoundView.vue'),
+      component: NotFoundView,
       meta: {
         title: '404 Not Found - Blog CMS'
       }
@@ -171,6 +192,43 @@ router.beforeEach(async (to, from, next) => {
   }
   
   next()
+})
+
+// Route prefetching for better performance
+router.afterEach((to) => {
+  // Prefetch routes that are likely to be visited next
+  const prefetchRoutes = []
+  
+  switch (to.name) {
+    case 'home':
+      prefetchRoutes.push('posts', 'post-detail')
+      break
+    case 'posts':
+      prefetchRoutes.push('post-detail', 'category-posts')
+      break
+    case 'login':
+      prefetchRoutes.push('dashboard')
+      break
+    case 'dashboard':
+      prefetchRoutes.push('dashboard-posts')
+      break
+  }
+  
+  // Prefetch routes after a short delay to avoid blocking
+  setTimeout(() => {
+    prefetchRoutes.forEach(routeName => {
+      const route = router.getRoutes().find(r => r.name === routeName)
+      if (route && route.component) {
+        // Trigger dynamic import
+        route.component()
+      }
+    })
+  }, 100)
+  
+  // Update document title
+  if (to.meta?.title) {
+    document.title = to.meta.title
+  }
 })
 
 export default router

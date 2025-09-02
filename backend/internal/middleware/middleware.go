@@ -138,7 +138,7 @@ func OwnerOrAdminMiddleware(getResourceOwnerID func(*gin.Context) (uint, error))
 		}
 
 		userRole, _ := c.Get("user_role")
-		
+
 		// Admin can access anything
 		if userRole == "admin" {
 			c.Next()

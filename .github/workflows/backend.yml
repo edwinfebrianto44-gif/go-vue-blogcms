@@ -1,0 +1,267 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/backend
+
+jobs:
+  test:
+    name: Test Backend
+    runs-on: ubuntu-latest
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: testdb
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache-dependency-path: backend/go.sum
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Install dependencies
+      working-directory: ./backend
+      run: |
+        go mod download
+        go mod tidy
+
+    - name: Wait for MySQL
+      run: |
+        while ! mysqladmin ping -h"127.0.0.1" -P 3306 -uroot -ptestpass --silent; do
+          echo "Waiting for MySQL..."
+          sleep 2
+        done
+
+    - name: Run unit tests
+      working-directory: ./backend
+      run: |
+        make test-unit
+      env:
+        DB_HOST: localhost
+        DB_PORT: 3306
+        DB_USER: root
+        DB_PASS: testpass
+        DB_NAME: testdb
+        JWT_SECRET: test-secret-key
+
+    - name: Run integration tests
+      working-directory: ./backend
+      run: |
+        make test-integration
+      env:
+        DB_HOST: localhost
+        DB_PORT: 3306
+        DB_USER: root
+        DB_PASS: testpass
+        DB_NAME: testdb
+        JWT_SECRET: test-secret-key
+
+    - name: Generate test coverage
+      working-directory: ./backend
+      run: |
+        make test-coverage
+      env:
+        DB_HOST: localhost
+        DB_PORT: 3306
+        DB_USER: root
+        DB_PASS: testpass
+        DB_NAME: testdb
+        JWT_SECRET: test-secret-key
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./backend/coverage.out
+        flags: backend
+        name: backend-coverage
+
+  build:
+    name: Build Backend
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache-dependency-path: backend/go.sum
+
+    - name: Build binary
+      working-directory: ./backend
+      run: |
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/blogcms-server cmd/server/main.go
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: backend-binary
+        path: backend/bin/blogcms-server
+
+  docker:
+    name: Build and Push Docker Image
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        file: ./backend/Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Image digest
+      run: echo ${{ steps.build.outputs.digest }}
+
+  deploy:
+    name: Deploy to VPS
+    needs: [test, build, docker]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up SSH
+      uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+    - name: Add VPS to known hosts
+      run: |
+        ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+    - name: Deploy to VPS
+      run: |
+        ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+          # Navigate to application directory
+          cd /opt/blogcms
+          
+          # Pull latest Docker image
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          
+          # Stop existing container
+          docker-compose down backend || true
+          
+          # Update docker-compose.yml with new image
+          sed -i 's|image: .*backend.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest|g' docker-compose.yml
+          
+          # Start new container
+          docker-compose up -d backend
+          
+          # Clean up old images
+          docker image prune -f
+          
+          # Health check
+          sleep 10
+          curl -f http://localhost:8080/health || exit 1
+          
+          echo "✅ Backend deployment successful!"
+        EOF
+
+    - name: Notify deployment status
+      if: always()
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "🚀 Backend deployment to VPS successful!"
+        else
+          echo "❌ Backend deployment to VPS failed!"
+          exit 1
+        fi
+
+  notify:
+    name: Notify Status
+    needs: [test, build, docker, deploy]
+    runs-on: ubuntu-latest
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Notify success
+      if: ${{ needs.test.result == 'success' && needs.build.result == 'success' && needs.docker.result == 'success' && needs.deploy.result == 'success' }}
+      run: |
+        echo "✅ Backend CI/CD Pipeline Successful!"
+        echo "🧪 Tests: Passed"
+        echo "🔨 Build: Successful"
+        echo "🐳 Docker: Built and pushed"
+        echo "🚀 Deploy: VPS updated"
+
+    - name: Notify failure
+      if: ${{ needs.test.result == 'failure' || needs.build.result == 'failure' || needs.docker.result == 'failure' || needs.deploy.result == 'failure' }}
+      run: |
+        echo "❌ Backend CI/CD Pipeline Failed!"
+        echo "🧪 Tests: ${{ needs.test.result }}"
+        echo "🔨 Build: ${{ needs.build.result }}"
+        echo "🐳 Docker: ${{ needs.docker.result }}"
+        echo "🚀 Deploy: ${{ needs.deploy.result }}"
+        exit 1

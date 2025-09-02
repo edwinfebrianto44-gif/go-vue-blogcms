@@ -24,38 +24,80 @@ run: build
 	@echo "Running $(BINARY_NAME)..."
 	./$(BUILD_DIR)/$(BINARY_NAME)
 
-# Run tests
-test:
-	@echo "Running tests..."
-	go test -v ./...
+# Install dependencies
+deps:
+	@echo "Installing Go dependencies..."
+	go mod download
+	go mod tidy
 
-# Test with coverage
-test-coverage:
-	@echo "Running tests with coverage..."
-	go test -v -coverprofile=coverage.out ./...
+# Run all tests (Phase 11 - Comprehensive Testing)
+test: deps
+	@echo "🧪 Running all tests..."
+	go test -race -timeout 300s ./...
+
+# Test with coverage (Phase 11 requirement: 100% service coverage)
+test-coverage: deps
+	@echo "📊 Running tests with coverage..."
+	go test -race -timeout 300s -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
+	@go tool cover -func=coverage.out | grep "total:" | awk '{print "Total coverage: " $$3}'
+
+# Run unit tests only
+test-unit: deps
+	@echo "🔬 Running unit tests..."
+	go test -race -timeout 60s -short ./internal/services/... ./internal/repositories/tests/...
+
+# Run integration tests with MySQL containers
+test-integration: deps
+	@echo "🔗 Running integration tests..."
+	go test -race -timeout 300s ./integration/...
+
+# Run tests with verbose output
+test-verbose: deps
+	@echo "📝 Running tests with verbose output..."
+	go test -race -timeout 300s -v ./...
 
 # Test authentication features
 test-auth:
 	@echo "🔐 Running authentication tests..."
-	go test -v ./tests/auth_test.go
+	go test -v ./internal/services/ -run TestAuthService
 
 # Test security middleware
 test-security:
 	@echo "🛡️ Running security middleware tests..."
 	go test -v ./tests/middleware_test.go
 
-# Test integration scenarios
-test-integration:
-	@echo "🔗 Running integration tests..."
-	go test -v -tags=integration ./tests/...
-
 # Test Phase 6 security features
 test-phase6:
-	@echo "🔒 Running Phase 6 security tests..."
+	@echo "� Running Phase 6 security tests..."
 	@$(MAKE) test-auth
 	@$(MAKE) test-security
 	@echo "✅ Phase 6 security tests completed"
+
+# Phase 11 - Complete testing suite
+test-phase11: deps
+	@echo "🎯 Running Phase 11 comprehensive tests..."
+	@echo "1️⃣ Unit tests for services..."
+	@$(MAKE) test-unit
+	@echo "2️⃣ Integration tests with MySQL containers..."
+	@$(MAKE) test-integration
+	@echo "3️⃣ HTTP endpoint tests..."
+	go test -race -timeout 300s ./integration/... -run TestAPI
+	@echo "4️⃣ Coverage analysis..."
+	@$(MAKE) test-coverage
+	@echo "✅ Phase 11 testing completed successfully!"
+
+# Run tests using Docker containers for database dependencies
+docker-test: deps
+	@echo "🐳 Running tests with Docker containers..."
+	docker run --rm -d --name test-mysql -e MYSQL_ROOT_PASSWORD=testpass -e MYSQL_DATABASE=testdb -p 3307:3306 mysql:8.0
+	@echo "Waiting for MySQL to be ready..."
+	@sleep 15
+	@echo "Running tests..."
+	MYSQL_TEST_DSN="root:testpass@tcp(localhost:3307)/testdb?charset=utf8mb4&parseTime=True&loc=Local" go test -race -timeout 300s ./...
+	@echo "Cleaning up..."
+	docker stop test-mysql || true
 
 # Clean build artifacts
 clean:

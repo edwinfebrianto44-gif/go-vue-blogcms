@@ -6,7 +6,6 @@ import (
 	"backend/internal/models"
 	"backend/internal/services"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,23 +18,19 @@ func SetupRoutes(
 	commentHandler *handlers.CommentHandler,
 	uploadHandler *handlers.UploadHandler,
 	docsHandler *handlers.DocsHandler,
+	healthHandler *handlers.HealthHandler,
+	metricsHandler *handlers.MetricsHandler,
 	jwtService services.JWTService,
 ) {
-	// Health check with detailed information
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, models.HealthResponse{
-			Status:    "healthy",
-			Timestamp: time.Now(),
-			Version:   "1.0.0",
-			Services: map[string]string{
-				"database":     "connected",
-				"auth":         "enabled",
-				"rate_limit":   "active",
-				"cors":         "configured",
-				"validation":   "enabled",
-			},
-		})
-	})
+	// Kubernetes health check endpoints (without middleware for reliability)
+	r.GET("/healthz", healthHandler.LivenessCheck) // Liveness probe
+	r.GET("/readyz", healthHandler.ReadinessCheck) // Readiness probe
+
+	// General health check with full details
+	r.GET("/health", healthHandler.HealthCheck)
+
+	// Prometheus metrics endpoint (optional - can be disabled in production)
+	r.GET("/metrics", metricsHandler.Metrics)
 
 	// API v1 routes
 	v1 := r.Group("/api/v1")
@@ -52,7 +47,7 @@ func SetupRoutes(
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/refresh", authHandler.RefreshToken)
-		
+
 		// Protected auth routes
 		authProtected := auth.Group("")
 		authProtected.Use(middleware.AuthMiddleware(jwtService))
@@ -72,7 +67,7 @@ func SetupRoutes(
 		categories.GET("", categoryHandler.List)
 		categories.GET("/:id", categoryHandler.GetByID)
 		categories.GET("/slug/:slug", categoryHandler.GetBySlug)
-		
+
 		// Protected routes (admin only)
 		categoriesProtected := categories.Group("")
 		categoriesProtected.Use(middleware.AuthMiddleware(jwtService))
@@ -93,13 +88,13 @@ func SetupRoutes(
 		posts.GET("/slug/:slug", postHandler.GetBySlug)
 		posts.GET("/author/:author_id", postHandler.GetByAuthor)
 		posts.GET("/category/:category_id", postHandler.GetByCategory)
-		
+
 		// Protected routes (authenticated users)
 		postsProtected := posts.Group("")
 		postsProtected.Use(middleware.AuthMiddleware(jwtService))
 		{
 			postsProtected.POST("", postHandler.Create)
-			
+
 			// Owner or admin can update/delete
 			postsProtected.PUT("/:id", middleware.OwnerOrAdminMiddleware(getPostOwnerID), postHandler.Update)
 			postsProtected.DELETE("/:id", middleware.OwnerOrAdminMiddleware(getPostOwnerID), postHandler.Delete)
@@ -114,13 +109,13 @@ func SetupRoutes(
 		comments.GET("/:id", commentHandler.GetByID)
 		comments.GET("/post/:post_id", commentHandler.GetByPost)
 		comments.GET("/user/:user_id", commentHandler.GetByUser)
-		
+
 		// Protected routes (authenticated users)
 		commentsProtected := comments.Group("")
 		commentsProtected.Use(middleware.AuthMiddleware(jwtService))
 		{
 			commentsProtected.POST("", commentHandler.Create)
-			
+
 			// Owner or admin can update/delete
 			commentsProtected.PUT("/:id", middleware.OwnerOrAdminMiddleware(getCommentOwnerID), commentHandler.Update)
 			commentsProtected.DELETE("/:id", middleware.OwnerOrAdminMiddleware(getCommentOwnerID), commentHandler.Delete)
@@ -133,7 +128,7 @@ func SetupRoutes(
 		// Public routes
 		uploads.GET("/info", uploadHandler.GetUploadInfo)
 		uploads.GET("/:filename", uploadHandler.ServeLocalImage)
-		
+
 		// Protected routes (author/admin only)
 		uploadsProtected := uploads.Group("")
 		uploadsProtected.Use(middleware.AuthMiddleware(jwtService))
@@ -158,7 +153,7 @@ func SetupRoutes(
 				Data:    []string{"Coming soon"},
 			})
 		})
-		
+
 		// System statistics
 		admin.GET("/stats", func(c *gin.Context) {
 			// TODO: Implement system statistics

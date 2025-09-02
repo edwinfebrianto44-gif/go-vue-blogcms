@@ -45,12 +45,12 @@ type StorageConfig struct {
 	BaseURL     string
 	MaxFileSize int64
 	// S3/MinIO settings
-	S3Endpoint   string
-	S3Region     string
-	S3Bucket     string
-	S3AccessKey  string
-	S3SecretKey  string
-	S3BaseURL    string
+	S3Endpoint       string
+	S3Region         string
+	S3Bucket         string
+	S3AccessKey      string
+	S3SecretKey      string
+	S3BaseURL        string
 	S3ForcePathStyle bool
 }
 
@@ -61,6 +61,8 @@ func LoadConfig() *Config {
 	}
 
 	maxFileSize, _ := strconv.ParseInt(getEnv("STORAGE_MAX_FILE_SIZE", "5242880"), 10, 64) // 5MB default
+	expireHours, _ := strconv.Atoi(getEnv("JWT_EXPIRE_HOURS", "24"))
+	debug := getEnv("APP_DEBUG", "false") == "true"
 
 	return &Config{
 		Database: DatabaseConfig{

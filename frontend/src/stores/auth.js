@@ -4,8 +4,8 @@ import api, { clearAuthData } from '@/services/api'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
-  const accessToken = ref(localStorage.getItem('accessToken'))
-  const refreshToken = ref(localStorage.getItem('refreshToken'))
+  const accessToken = ref(null)
+  const refreshToken = ref(null)
   const isLoading = ref(false)
 
   // Computed
@@ -14,19 +14,29 @@ export const useAuthStore = defineStore('auth', () => {
   const isEditor = computed(() => user.value?.role === 'editor' || isAdmin.value)
   const isAuthor = computed(() => user.value?.role === 'author' || isEditor.value)
 
-  // Load user from localStorage on store initialization
-  const storedUser = localStorage.getItem('user')
-  if (storedUser) {
-    try {
-      user.value = JSON.parse(storedUser)
-    } catch (error) {
-      console.error('Failed to parse stored user data:', error)
-      localStorage.removeItem('user')
+  // Initialize from localStorage only on client side
+  const initializeFromStorage = () => {
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      accessToken.value = localStorage.getItem('accessToken')
+      refreshToken.value = localStorage.getItem('refreshToken')
+      
+      const storedUser = localStorage.getItem('user')
+      if (storedUser) {
+        try {
+          user.value = JSON.parse(storedUser)
+        } catch (error) {
+          console.error('Failed to parse stored user data:', error)
+          localStorage.removeItem('user')
+        }
+      }
     }
   }
 
   // Actions
   const initAuth = async () => {
+    // Initialize from storage first
+    initializeFromStorage()
+    
     if (accessToken.value) {
       try {
         await getProfile()
@@ -34,6 +44,19 @@ export const useAuthStore = defineStore('auth', () => {
         console.error('Failed to initialize auth:', error)
         logout()
       }
+    }
+  }
+
+  // Helper function to safely access localStorage
+  const setStorageItem = (key, value) => {
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      localStorage.setItem(key, value)
+    }
+  }
+
+  const removeStorageItem = (key) => {
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      localStorage.removeItem(key)
     }
   }
 
@@ -52,9 +75,9 @@ export const useAuthStore = defineStore('auth', () => {
       refreshToken.value = refresh_token
       user.value = userData
 
-      localStorage.setItem('accessToken', access_token)
-      localStorage.setItem('refreshToken', refresh_token)
-      localStorage.setItem('user', JSON.stringify(userData))
+      setStorageItem('accessToken', access_token)
+      setStorageItem('refreshToken', refresh_token)
+      setStorageItem('user', JSON.stringify(userData))
       
       // Set default authorization header
       api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
@@ -86,9 +109,9 @@ export const useAuthStore = defineStore('auth', () => {
       refreshToken.value = refresh_token
       user.value = newUser
 
-      localStorage.setItem('accessToken', access_token)
-      localStorage.setItem('refreshToken', refresh_token)
-      localStorage.setItem('user', JSON.stringify(newUser))
+      setStorageItem('accessToken', access_token)
+      setStorageItem('refreshToken', refresh_token)
+      setStorageItem('user', JSON.stringify(newUser))
       
       // Set default authorization header
       api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
@@ -109,7 +132,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await api.get('/auth/profile')
       user.value = response.data.data
-      localStorage.setItem('user', JSON.stringify(response.data.data))
+      setStorageItem('user', JSON.stringify(response.data.data))
       return response.data.data
     } catch (error) {
       console.error('Failed to get profile:', error)
@@ -145,7 +168,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await api.put('/auth/profile', profileData)
       user.value = response.data.data
-      localStorage.setItem('user', JSON.stringify(response.data.data))
+      setStorageItem('user', JSON.stringify(response.data.data))
       return { success: true, user: response.data.data }
     } catch (error) {
       console.error('Profile update failed:', error)
@@ -171,11 +194,11 @@ export const useAuthStore = defineStore('auth', () => {
       const { access_token, refresh_token: newRefreshToken } = response.data.data
       
       accessToken.value = access_token
-      localStorage.setItem('accessToken', access_token)
+      setStorageItem('accessToken', access_token)
       
       if (newRefreshToken) {
         refreshToken.value = newRefreshToken
-        localStorage.setItem('refreshToken', newRefreshToken)
+        setStorageItem('refreshToken', newRefreshToken)
       }
 
       api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`

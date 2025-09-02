@@ -28,7 +28,10 @@ const processQueue = (error, token = null) => {
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken')
+    // Only access localStorage on client side
+    const token = typeof window !== 'undefined' && typeof localStorage !== 'undefined' 
+      ? localStorage.getItem('accessToken') 
+      : null
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -64,7 +67,9 @@ api.interceptors.response.use(
       originalRequest._retry = true
       isRefreshing = true
 
-      const refreshToken = localStorage.getItem('refreshToken')
+      const refreshToken = typeof window !== 'undefined' && typeof localStorage !== 'undefined' 
+        ? localStorage.getItem('refreshToken') 
+        : null
       
       if (refreshToken) {
         try {
@@ -78,10 +83,12 @@ api.interceptors.response.use(
 
           const { access_token, refresh_token: newRefreshToken } = response.data.data
           
-          // Update tokens in localStorage
-          localStorage.setItem('accessToken', access_token)
-          if (newRefreshToken) {
-            localStorage.setItem('refreshToken', newRefreshToken)
+          // Update tokens in localStorage (only on client side)
+          if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+            localStorage.setItem('accessToken', access_token)
+            if (newRefreshToken) {
+              localStorage.setItem('refreshToken', newRefreshToken)
+            }
           }
 
           // Update default authorization header
@@ -126,18 +133,25 @@ api.interceptors.response.use(
 
 // Utility functions
 const clearAuthData = () => {
-  localStorage.removeItem('accessToken')
-  localStorage.removeItem('refreshToken')
-  localStorage.removeItem('user')
+  if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('refreshToken')
+    localStorage.removeItem('user')
+  }
   delete api.defaults.headers.common['Authorization']
 }
 
 const redirectToLogin = () => {
-  // Avoid redirect loops
-  if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/register')) {
-    // Store current location for redirect after login
-    localStorage.setItem('redirectPath', window.location.pathname)
-    window.location.href = '/login'
+  // Only redirect on client side
+  if (typeof window !== 'undefined') {
+    // Avoid redirect loops
+    if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/register')) {
+      // Store current location for redirect after login
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('redirectPath', window.location.pathname)
+      }
+      window.location.href = '/login'
+    }
   }
 }
 

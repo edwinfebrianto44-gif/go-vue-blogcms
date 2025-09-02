@@ -1,0 +1,436 @@
+name: Full Stack CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ${{ github.repository }}/backend
+  FRONTEND_IMAGE: ${{ github.repository }}/frontend
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.changes.outputs.backend }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+      workflows: ${{ steps.changes.outputs.workflows }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dorny/paths-filter@v2
+      id: changes
+      with:
+        filters: |
+          backend:
+            - 'backend/**'
+          frontend:
+            - 'frontend/**'
+          workflows:
+            - '.github/workflows/**'
+
+  backend-test:
+    name: Backend Tests
+    needs: changes
+    runs-on: ubuntu-latest
+    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.workflows == 'true' }}
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: testdb
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache-dependency-path: backend/go.sum
+
+    - name: Install dependencies
+      working-directory: ./backend
+      run: |
+        go mod download
+        go mod tidy
+
+    - name: Run tests
+      working-directory: ./backend
+      run: make test-phase11
+      env:
+        DB_HOST: localhost
+        DB_PORT: 3306
+        DB_USER: root
+        DB_PASS: testpass
+        DB_NAME: testdb
+        JWT_SECRET: test-secret-key
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./backend/coverage.out
+        flags: backend
+
+  frontend-test:
+    name: Frontend Tests
+    needs: changes
+    runs-on: ubuntu-latest
+    if: ${{ needs.changes.outputs.frontend == 'true' || needs.changes.outputs.workflows == 'true' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Run linting
+      working-directory: ./frontend
+      run: npm run lint
+
+    - name: Run type checking
+      working-directory: ./frontend
+      run: npm run type-check
+
+    - name: Run tests
+      working-directory: ./frontend
+      run: npm run test:coverage
+      env:
+        CI: true
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        directory: ./frontend/coverage
+        flags: frontend
+
+  build-backend:
+    name: Build Backend
+    needs: [changes, backend-test]
+    runs-on: ubuntu-latest
+    if: ${{ always() && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.workflows == 'true') && needs.backend-test.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}
+        tags: |
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        file: ./backend/Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  build-frontend:
+    name: Build Frontend
+    needs: [changes, frontend-test]
+    runs-on: ubuntu-latest
+    if: ${{ always() && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.workflows == 'true') && needs.frontend-test.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Build application
+      working-directory: ./frontend
+      run: npm run build
+      env:
+        VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-dist
+        path: frontend/dist/
+
+  e2e-tests:
+    name: End-to-End Tests
+    needs: [changes, backend-test, frontend-test, build-backend, build-frontend]
+    runs-on: ubuntu-latest
+    if: ${{ always() && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.workflows == 'true') && needs.backend-test.result == 'success' && needs.frontend-test.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: testdb
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache-dependency-path: backend/go.sum
+
+    - name: Download frontend build
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-dist
+        path: frontend/dist/
+      if: needs.build-frontend.result == 'success'
+
+    - name: Install dependencies
+      run: |
+        cd frontend && npm ci
+        cd ../backend && go mod download
+
+    - name: Start backend
+      working-directory: ./backend
+      run: |
+        go build -o bin/server cmd/server/main.go
+        ./bin/server &
+        echo $! > server.pid
+      env:
+        DB_HOST: localhost
+        DB_PORT: 3306
+        DB_USER: root
+        DB_PASS: testpass
+        DB_NAME: testdb
+        JWT_SECRET: test-secret-key
+
+    - name: Wait for backend
+      run: |
+        timeout 60 bash -c 'until curl -f http://localhost:8080/health; do sleep 2; done'
+
+    - name: Run E2E tests
+      working-directory: ./frontend
+      run: npm run test:e2e
+      env:
+        VITE_API_URL: http://localhost:8080/api/v1
+
+    - name: Upload E2E results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: e2e-results
+        path: |
+          frontend/test-results/
+          frontend/playwright-report/
+
+  deploy:
+    name: Deploy to Production
+    needs: [changes, backend-test, frontend-test, build-backend, build-frontend, e2e-tests]
+    runs-on: ubuntu-latest
+    if: ${{ always() && needs.e2e-tests.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    environment: production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download frontend build
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-dist
+        path: frontend/dist/
+      if: needs.build-frontend.result == 'success'
+
+    - name: Set up SSH
+      uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+    - name: Add VPS to known hosts
+      run: |
+        ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+    - name: Deploy to VPS
+      run: |
+        # Create deployment script
+        cat > deploy.sh << 'DEPLOY_SCRIPT'
+        #!/bin/bash
+        set -e
+
+        echo "🚀 Starting full-stack deployment..."
+
+        # Navigate to application directory
+        cd /opt/blogcms
+
+        # Pull latest images
+        if [ "${{ needs.build-backend.result }}" == "success" ]; then
+          echo "📦 Pulling backend image..."
+          docker pull ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:latest
+        fi
+
+        # Update docker-compose
+        if [ "${{ needs.build-backend.result }}" == "success" ]; then
+          sed -i 's|image: .*backend.*|image: ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:latest|g' docker-compose.yml
+        fi
+
+        # Deploy backend
+        if [ "${{ needs.build-backend.result }}" == "success" ]; then
+          echo "🔄 Restarting backend..."
+          docker-compose up -d backend
+          sleep 10
+          curl -f http://localhost:8080/health || (echo "❌ Backend health check failed" && exit 1)
+        fi
+
+        # Deploy frontend
+        if [ "${{ needs.build-frontend.result }}" == "success" ]; then
+          echo "🌐 Deploying frontend..."
+          
+          # Backup current frontend
+          if [ -d /var/www/blogcms ]; then
+            cp -r /var/www/blogcms /var/www/blogcms-backup-$(date +%Y%m%d-%H%M%S)
+          fi
+          
+          # Deploy new frontend
+          mkdir -p /var/www/blogcms
+          rm -rf /var/www/blogcms/*
+          cp -r /tmp/frontend-dist/* /var/www/blogcms/
+          chown -R www-data:www-data /var/www/blogcms
+          chmod -R 755 /var/www/blogcms
+          
+          # Reload nginx
+          nginx -t && systemctl reload nginx
+        fi
+
+        # Clean up old images and backups
+        docker image prune -f
+        find /var/www/ -name "blogcms-backup-*" -type d | sort | head -n -5 | xargs rm -rf
+
+        echo "✅ Full-stack deployment completed successfully!"
+        DEPLOY_SCRIPT
+
+        # Upload frontend if built
+        if [ "${{ needs.build-frontend.result }}" == "success" ]; then
+          cd frontend
+          tar -czf ../frontend-dist.tar.gz dist/
+          cd ..
+          scp frontend-dist.tar.gz ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "cd /tmp && tar -xzf frontend-dist.tar.gz"
+        fi
+
+        # Upload and run deployment script
+        scp deploy.sh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/
+        ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "sudo bash /tmp/deploy.sh"
+
+    - name: Health check
+      run: |
+        sleep 5
+        
+        # Check backend health
+        if [ "${{ needs.build-backend.result }}" == "success" ]; then
+          curl -f http://${{ secrets.VPS_HOST }}:8080/health || exit 1
+        fi
+        
+        # Check frontend
+        if [ "${{ needs.build-frontend.result }}" == "success" ]; then
+          curl -f http://${{ secrets.VPS_HOST }} || exit 1
+        fi
+        
+        echo "✅ All services are healthy!"
+
+  notify:
+    name: Notify Deployment Status
+    needs: [changes, backend-test, frontend-test, build-backend, build-frontend, e2e-tests, deploy]
+    runs-on: ubuntu-latest
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Create deployment summary
+      run: |
+        echo "# 🚀 Full Stack Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Component | Status | Result |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Backend Tests | ${{ needs.backend-test.result }} | ${{ needs.backend-test.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Frontend Tests | ${{ needs.frontend-test.result }} | ${{ needs.frontend-test.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Backend Build | ${{ needs.build-backend.result }} | ${{ needs.build-backend.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Frontend Build | ${{ needs.build-frontend.result }} | ${{ needs.build-frontend.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| E2E Tests | ${{ needs.e2e-tests.result }} | ${{ needs.e2e-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Deployment | ${{ needs.deploy.result }} | ${{ needs.deploy.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.deploy.result }}" == "success" ]; then
+          echo "🎉 **Deployment Successful!**" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend: http://${{ secrets.VPS_HOST }}:8080" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend: http://${{ secrets.VPS_HOST }}" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Deployment Failed!**" >> $GITHUB_STEP_SUMMARY
+          echo "Check the deployment logs for details." >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Set final status
+      run: |
+        if [ "${{ needs.deploy.result }}" == "success" ]; then
+          echo "✅ Full-stack CI/CD pipeline completed successfully!"
+          exit 0
+        else
+          echo "❌ Full-stack CI/CD pipeline failed!"
+          exit 1
+        fi
