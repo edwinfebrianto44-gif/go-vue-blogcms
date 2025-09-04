@@ -1,61 +1,163 @@
+# Go-Vue BlogCMS - Complete Docker Stack
 version: '3.8'
 
-services:
-  backend:
-    image: ghcr.io/${GITHUB_REPOSITORY}/backend:latest
-    container_name: blogcms-backend
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    environment:
-      - DB_HOST=${DB_HOST:-mysql}
-      - DB_PORT=${DB_PORT:-3306}
-      - DB_USER=${DB_USER}
-      - DB_PASS=${DB_PASS}
-      - DB_NAME=${DB_NAME:-blogcms}
-      - JWT_SECRET=${JWT_SECRET}
-      - PORT=8080
-      - GIN_MODE=release
-    depends_on:
-      mysql:
-        condition: service_healthy
-    networks:
-      - blogcms-network
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+networks:
+  blogcms-network:
+    driver: bridge
 
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+
+services:
+  # Database
   mysql:
     image: mysql:8.0
     container_name: blogcms-mysql
     restart: unless-stopped
     environment:
-      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASS}
-      - MYSQL_DATABASE=${DB_NAME:-blogcms}
-      - MYSQL_USER=${DB_USER}
-      - MYSQL_PASSWORD=${DB_PASS}
+      MYSQL_ROOT_PASSWORD: blogcms_root_2024
+      MYSQL_DATABASE: blogcms
+      MYSQL_USER: blogcms_user
+      MYSQL_PASSWORD: blogcms_password_2024
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./backend/database_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./backend/database_indexes.sql:/docker-entrypoint-initdb.d/02-indexes.sql
     networks:
       - blogcms-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASS}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
     command: >
       --default-authentication-plugin=mysql_native_password
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci
-      --sql_mode=STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO
 
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: blogcms-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - blogcms-network
+    command: redis-server --appendonly yes --requirepass blogcms_redis_2024
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: blogcms-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: blogcms_minio
+      MINIO_ROOT_PASSWORD: blogcms_minio_2024
+    ports:
+      - "9001:9000"
+      - "9002:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - blogcms-network
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: blogcms-backend
+    restart: unless-stopped
+    environment:
+      # Database
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: blogcms_user
+      DB_PASSWORD: blogcms_password_2024
+      DB_NAME: blogcms
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: blogcms_redis_2024
+      
+      # MinIO
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: blogcms_minio
+      MINIO_SECRET_KEY: blogcms_minio_2024
+      MINIO_BUCKET: blogcms-uploads
+      MINIO_USE_SSL: "false"
+      
+      # JWT
+      JWT_SECRET: "your-super-secret-jwt-key-change-in-production"
+      JWT_EXPIRES_IN: "24h"
+      REFRESH_TOKEN_EXPIRES_IN: "7d"
+      
+      # Server
+      PORT: 8080
+      GIN_MODE: release
+      
+      # CORS
+      CORS_ORIGINS: "http://localhost:3001"
+      
+    ports:
+      - "8081:8080"
+    networks:
+      - blogcms-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./backend/uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: blogcms-frontend
+    restart: unless-stopped
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8081/api/v1
+      - VITE_SITE_URL=http://localhost:3001
+      - VITE_SITE_NAME=BlogCMS
+    ports:
+      - "3001:80"
+    networks:
+      - blogcms-network
+    depends_on:
+      - backend
+
+  # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
     container_name: blogcms-nginx
@@ -64,43 +166,15 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/www/blogcms:/var/www/html:ro
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/sites-available:/etc/nginx/sites-available:ro
-      - ./nginx/sites-enabled:/etc/nginx/sites-enabled:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - backend
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/conf.d:/etc/nginx/conf.d
     networks:
       - blogcms-network
+    depends_on:
+      - backend
+      - frontend
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-
-  redis:
-    image: redis:7-alpine
-    container_name: blogcms-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - blogcms-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-volumes:
-  mysql_data:
-    driver: local
-  redis_data:
-    driver: local
-
-networks:
-  blogcms-network:
-    driver: bridge

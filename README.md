@@ -1,488 +1,401 @@
-# 📝 BlogCMS - Modern Full-Stack Blog Management System
+# Go Vue Blog CMS
 
-[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://golang.org)
-[![Vue.js](https://img.shields.io/badge/Vue.js-3.x-4FC08D?style=flat&logo=vue.js)](https://vuejs.org)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat&logo=docker)](https://docker.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+A modern full-stack blog Content Management System built with Go (backend) and Vue.js (frontend) with complete Docker containerization for seamless deployment.
 
-A production-ready, full-stack blog content management system with Go backend and Vue 3 frontend. Features enterprise-grade security, automated deployments, and comprehensive API documentation.
+## ⚡ Quick Start (One Command Setup)
 
-![BlogCMS Architecture](docs/images/architecture-overview.png)
-
-## ⚡ Quick Start
-
-Get BlogCMS running in under 2 minutes with demo data:
+Get your blog running instantly with all services integrated:
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/go-vue-blogcms.git
+# Clone and start everything
+git clone <repository-url>
 cd go-vue-blogcms
+docker-compose up -d
 
-# Option 1: Quick demo setup (recommended)
-./scripts/demo-setup.sh
-
-# Option 2: Manual setup
-docker compose up -d
-./scripts/quick-seed.sh
-
-# Access the application
-# 🌐 Frontend: http://localhost:3000
-# 🔌 API: http://localhost:8080
-# 📚 API Docs: http://localhost:8080/swagger/index.html
+# Access your application:
+# 🌐 Frontend (Main App): http://localhost:3001
+# 🔌 Backend API: http://localhost:8081  
+# � MinIO Console: http://localhost:9001 (admin/minioadmin)
+# � Production Nginx: http://localhost
 ```
 
-### 👤 Demo Accounts
-- **Admin**: `admin@demo.com` / `Admin123!` (Full access)
-- **Editor**: `editor@demo.com` / `Editor123!` (Content management)
-- **Author**: `author@demo.com` / `Author123!` (Write posts)
+**Ready in under 3 minutes with all services running!**
 
 ## 🌟 Features
 
 ### 🔧 **Backend (Go + Gin)**
-- **Clean Architecture** - Repository + Service + Handler pattern
-- **JWT Authentication** - Secure login with role-based access
-- **RESTful API** - OpenAPI 3.0 documented endpoints
-- **Database ORM** - GORM with auto-migrations
-- **File Upload** - Image handling with validation
-- **Observability** - Structured logging, metrics, health checks
-- **Security** - Rate limiting, CORS, input validation
+- **RESTful API** with comprehensive endpoints
+- **JWT Authentication** with refresh tokens
+- **MySQL Database** with GORM ORM
+- **Redis Caching** for performance optimization
+- **MinIO Object Storage** for file uploads
+- **Health Checks** and monitoring endpoints
+- **Security Middleware** (CORS, validation, rate limiting)
 
-### 🎨 **Frontend (Vue 3 + TypeScript)**
-- **Modern UI** - Responsive design with Tailwind CSS
-- **State Management** - Pinia for reactive data flow
-- **TypeScript** - Type-safe development experience
-- **PWA Ready** - Service worker and offline support
-- **Real-time** - WebSocket integration for live updates
-- **SEO Optimized** - Meta tags and structured data
+### 🎨 **Frontend (Vue 3)**
+- **Responsive SPA** with Vue Router
+- **Modern UI** with Tailwind CSS
+- **Pinia State Management** for data flow
+- **Real-time API Integration** 
+- **Production-ready** Nginx deployment
+- **PWA Ready** with service workers
 
-### 🗃️ **Database & Storage**
-- **MySQL 8.0** - Relational database with ACID compliance
-- **Auto Migrations** - Version-controlled schema updates
-- **Soft Deletes** - Data preservation with recovery options
-- **File Storage** - Local and cloud storage support
-- **Backup System** - Automated daily backups to S3/MinIO
+### 🐳 **Complete Docker Stack**
+- **Multi-service orchestration** with unique ports
+- **MySQL 8.0** database (port 3307)
+- **Redis 7** caching layer (port 6380)
+- **MinIO** object storage (ports 9001/9002)
+- **Nginx** reverse proxy with SSL support
+- **Auto health checks** and service dependencies
+- **Persistent volumes** for data protection
 
-### 🚀 **DevOps & Production**
-- **Docker Compose** - One-command deployment
-- **CI/CD Pipeline** - GitHub Actions automation
-- **SSL/TLS** - Let's Encrypt auto-renewal
-- **Security Hardening** - UFW firewall + fail2ban
-- **Monitoring** - Prometheus metrics + health endpoints
-- **Backup Automation** - Multi-tier retention strategy
-
-## 🏗️ Architecture
+## 🏗️ Architecture & Ports
 
 ```
-
-BlogCMS/
-├── 🔧 Backend (Go)
-│   ├── cmd/server/           # Application entry point
-│   ├── internal/            # Private application code
-│   │   ├── handlers/        # HTTP request handlers
-│   │   ├── services/        # Business logic layer
-│   │   ├── repositories/    # Data access layer
-│   │   ├── models/          # Database entities
-│   │   ├── middleware/      # HTTP middleware
-│   │   └── utils/           # Helper utilities
-│   ├── pkg/                 # Public libraries
-│   │   ├── auth/            # Authentication utilities
-│   │   ├── database/        # Database connection
-│   │   ├── logger/          # Structured logging
-│   │   ├── metrics/         # Prometheus metrics
-│   │   └── validation/      # Input validation
-│   └── migrations/          # Database migrations
-│
-├── 🎨 Frontend (Vue 3)
-│   ├── src/
-│   │   ├── components/      # Reusable Vue components
-│   │   ├── views/           # Page components
-│   │   ├── stores/          # Pinia state management
-│   │   ├── composables/     # Vue composition functions
-│   │   ├── types/           # TypeScript type definitions
-│   │   └── utils/           # Frontend utilities
-│   ├── public/              # Static assets
-│   └── dist/                # Built frontend (generated)
-│
-├── 🐳 DevOps
-│   ├── scripts/             # Production deployment scripts
-│   ├── nginx/               # Web server configuration
-│   ├── .github/workflows/   # CI/CD pipelines
-│   └── docs/                # Comprehensive documentation
-│
-└── 📊 Data & Config
-    ├── .env.example         # Environment template
-    ├── docker-compose.yml   # Container orchestration
-    └── init.sql             # Database initialization
+┌─ Production Stack ─┐    ┌─ Development Ports ─┐
+│                    │    │                      │
+│  🌐 Nginx (80/443) │────│  Frontend :3001      │
+│     │              │    │  Backend  :8081      │
+│     ├─ Frontend    │    │  MySQL    :3307      │
+│     └─ Backend API │    │  Redis    :6380      │
+│                    │    │  MinIO    :9001/9002 │
+│  🗄️ MySQL (3307)  │    │                      │
+│  🚀 Redis (6380)   │    └──────────────────────┘
+│  📁 MinIO (9001)   │
+└────────────────────┘
 ```
 
-## 🛠️ Tech Stack
+### Service Details
 
-### Backend
-- **Go 1.21+**
-- **Gin Web Framework** - HTTP router and middleware
-- **GORM** - ORM for database operations
-- **JWT-Go** - JSON Web Token implementation
-- **Bcrypt** - Password hashing
-- **Godotenv** - Environment variable management
+| Service  | Internal | External | Purpose                    |
+|----------|----------|----------|----------------------------|
+| Frontend | 80       | 3001     | Vue.js SPA Application    |
+| Backend  | 8080     | 8081     | Go API Server             |
+| MySQL    | 3306     | 3307     | Primary Database          |
+| Redis    | 6379     | 6380     | Caching & Sessions        |
+| MinIO    | 9000/9001| 9001/9002| File Storage & Console    |
+| Nginx    | 80/443   | 80/443   | Reverse Proxy & SSL       |
 
-### Database
-- **MySQL 8.0+**
+## 🛠️ Development Mode
 
-### DevOps
-- **Docker** & **Docker Compose**
-- **Makefile** for build automation
-
-## 📋 Prerequisites
-
-- Go 1.21 or higher
-- MySQL 8.0 or higher
-- Docker (optional)
-- Git
-
-## 🚀 Quick Start
-
-### 1. Clone the Repository
+### Backend Development
 ```bash
-git clone https://github.com/your-username/go-vue-blogcms.git
-cd go-vue-blogcms
-```
-
-### 2. Setup Backend Environment
-```bash
-# Navigate to backend directory
 cd backend
-
-# Copy environment file
-cp .env.example .env
-
-# Edit the .env file with your configuration
-nano .env
-```
-
-### 3. Install Backend Dependencies
-```bash
-# From the backend directory
 go mod download
-```
-
-### 4. Setup Database
-```bash
-# Create MySQL database
-mysql -u root -p -e "CREATE DATABASE blog_cms;"
-
-# Run migrations (from backend directory)
-mysql -u root -p blog_cms < database_schema.sql
-```
-
-### 5. Run the Backend Application
-```bash
-# From the backend directory
+cp .env.example .env  # Configure your environment
 go run cmd/server/main.go
-
-# Or using Makefile
-make run
+# Backend available at: http://localhost:8080
 ```
 
-The API will be available at `http://localhost:8080`
-
-## 🐳 Docker Setup
-
-### Using Docker Compose (Recommended for Development)
+### Frontend Development
 ```bash
-# Navigate to backend directory
-cd backend
+cd frontend
+npm install
+npm run dev  # Development server with hot reload
+# Frontend available at: http://localhost:5173
+```
 
-# Start all services (MySQL + API + phpMyAdmin)
+### Docker Development
+```bash
+# Start all services for development
 docker-compose up -d
 
 # View logs
-docker-compose logs -f
+docker-compose logs -f backend
+docker-compose logs -f frontend
 
-# Stop services
-docker-compose down
+# Rebuild specific service
+docker-compose build backend --no-cache
+docker-compose up -d backend
 ```
 
-Services:
-- **API**: http://localhost:8080
-- **phpMyAdmin**: http://localhost:8081
-- **MySQL**: localhost:3306
+## � Configuration
 
-### Using Docker only
-```bash
-# Navigate to backend directory
-cd backend
+### Environment Variables
 
-# Build image
-docker build -t go-vue-blogcms .
-
-# Run container
-docker run -p 8080:8080 --env-file .env go-vue-blogcms
-```
-
-## 🚀 Production Deployment (VPS)
-
-### Quick Deploy (One Command)
-```bash
-# On your Ubuntu VPS
-curl -fsSL https://raw.githubusercontent.com/your-username/go-vue-blogcms/main/deployment/quick-deploy.sh | bash -s your-domain.com
-```
-
-### Manual Deployment
-```bash
-# 1. Setup VPS
-wget https://raw.githubusercontent.com/your-username/go-vue-blogcms/main/deployment/setup-vps.sh
-chmod +x setup-vps.sh && ./setup-vps.sh
-
-# 2. Clone and deploy
-sudo mkdir -p /opt/blogcms && sudo chown $USER:$USER /opt/blogcms
-cd /opt/blogcms
-git clone https://github.com/your-username/go-vue-blogcms.git .
-cd deployment && cp .env.production .env
-# Edit .env with your domain and secure passwords
-./deploy.sh
-```
-
-**Production Features:**
-- ✅ Nginx reverse proxy with SSL
-- ✅ Let's Encrypt SSL certificates
-- ✅ MySQL with persistent storage
-- ✅ Adminer database management
-- ✅ Automated backups
-- ✅ System monitoring
-- ✅ Security best practices
-
-See `deployment/README.md` for detailed deployment guide.
-
-## 🎯 Demo Data & Portfolio Assets
-
-### Demo Data Seeding
-BlogCMS includes comprehensive demo data for immediate showcase:
-
-```bash
-# Quick demo data (recommended for testing)
-./scripts/quick-seed.sh
-
-# Comprehensive demo data (full showcase)
-./scripts/seed-demo-data.sh
-
-# Complete demo setup (build + seed + open browser)
-./scripts/demo-setup.sh --open-browser
-```
-
-**Demo Content Includes:**
-- 👤 **3 User Roles**: Admin, Editor, Author with realistic permissions
-- 📁 **8 Categories**: Technology, Web Development, DevOps, etc.
-- 📝 **10+ Blog Posts**: Realistic technical content with proper formatting
-- 💬 **25+ Comments**: Engaging user interactions across posts
-- 🖼️ **Sample Images**: Properly sized and optimized media assets
-
-### Portfolio Screenshots
-Generate professional screenshots for your portfolio:
-
-```bash
-# Create screenshot resources and instructions
-./scripts/generate-portfolio-assets.sh
-
-# Manual screenshot guide
-cat screenshots/README.md
-
-# Automated screenshot capture (requires Node.js)
-cd screenshots && npm install puppeteer && node capture-screenshots.js
-```
-
-**Screenshot Coverage:**
-- 🏠 Homepage with blog feed
-- 👑 Admin dashboard and management
-- ✏️ Content editor and creation
-- 📱 Mobile responsive views
-- 🔌 API documentation interface
-- 🎨 Dark/light theme variants
-
-## 🔧 Configuration
-
-Environment variables in `.env`:
-
+Create `.env` file in backend directory:
 ```env
-# Database
-DB_HOST=localhost
+# Database Configuration
+DB_HOST=mysql
 DB_PORT=3306
-DB_USER=root
-DB_PASS=password
-DB_NAME=blog_cms
+DB_USER=bloguser
+DB_PASSWORD=blogpass
+DB_NAME=blogcms
 
-# JWT
-JWT_SECRET=your-super-secret-jwt-key
+# JWT Configuration
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 JWT_EXPIRE_HOURS=24
 
-# Server
-SERVER_PORT=8080
-SERVER_HOST=localhost
+# Redis Configuration
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_PASSWORD=
 
-# App
-APP_ENV=development
-APP_DEBUG=true
+# MinIO Configuration
+MINIO_ENDPOINT=minio:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_BUCKET=blog-uploads
+
+# Server Configuration
+SERVER_PORT=8080
+CORS_ORIGINS=http://localhost:3001,http://localhost:5173
 ```
+
+### Frontend Configuration
+
+Update `frontend/src/services/api.js` if needed:
+```javascript
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081/api'
+```
+
+## 📊 Database Schema
+
+Complete MySQL schema with relationships:
+- **users** - User authentication and profiles
+- **posts** - Blog content with metadata
+- **categories** - Content organization
+- **comments** - User interactions and discussions
+- **refresh_tokens** - Session management
+
+Schema location: `backend/database_schema.sql`
 
 ## 📚 API Documentation
 
-Detailed API documentation is available in [API_DOCUMENTATION.md](./API_DOCUMENTATION.md).
+- **OpenAPI Specification**: `backend/docs/openapi.yaml`
+- **Postman Collection**: `backend/docs/postman_collection.json`
+- **Live API Docs**: http://localhost:8081/docs (when backend running)
 
 ### Quick API Examples
 
-#### Register User
 ```bash
-curl -X POST http://localhost:8080/api/v1/auth/register \
+# Register new user
+curl -X POST http://localhost:8081/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{
-    "username": "johndoe",
-    "email": "john@example.com",
-    "password": "password123"
-  }'
-```
+  -d '{"username":"john","email":"john@example.com","password":"password123"}'
 
-#### Login
-```bash
-curl -X POST http://localhost:8080/api/v1/auth/login \
+# Login
+curl -X POST http://localhost:8081/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{
-    "username": "johndoe",
-    "password": "password123"
-  }'
-```
+  -d '{"email":"john@example.com","password":"password123"}'
 
-#### Create Post
-```bash
-curl -X POST http://localhost:8080/api/v1/posts \
+# Create post (requires auth token)
+curl -X POST http://localhost:8081/api/posts \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -d '{
-    "title": "My First Post",
-    "content": "This is my first blog post!",
-    "category_id": 1
-  }'
+  -d '{"title":"My Post","content":"Post content","category_id":1}'
 ```
 
-## 🧪 Testing
+## � Security Features
+
+- **JWT Authentication** with refresh token rotation
+- **Password Hashing** with bcrypt (cost 12)
+- **CORS Middleware** with configurable origins
+- **Request Validation** and input sanitization
+- **SQL Injection Prevention** with GORM prepared statements
+- **XSS Protection** headers and content security
+- **Rate Limiting** middleware for API endpoints
+- **Secure File Upload** validation and storage
+- **Environment-based Secrets** management
+
+## 🚀 Production Deployment
+
+### Quick VPS Setup
+```bash
+# Download deployment scripts
+wget https://raw.githubusercontent.com/your-repo/go-vue-blogcms/main/deployment/setup-vps.sh
+chmod +x setup-vps.sh && ./setup-vps.sh
+
+# Quick deploy
+cd deployment && ./quick-deploy.sh
+```
+
+### Manual Production Steps
+
+1. **Server Preparation (Ubuntu/Debian):**
+```bash
+# Update system
+sudo apt update && sudo apt upgrade -y
+
+# Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+
+# Install Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+```
+
+2. **Deploy Application:**
+```bash
+# Clone repository
+git clone <repository-url>
+cd go-vue-blogcms
+
+# Configure production environment
+cp backend/.env.example backend/.env
+# Edit backend/.env with production values
+
+# Start all services
+docker-compose up -d
+
+# Verify deployment
+docker-compose ps
+docker-compose logs -f
+```
+
+3. **SSL Setup (Production):**
+```bash
+# Generate SSL certificates
+cd deployment && ./generate-ssl.sh your-domain.com
+
+# Update Nginx with SSL
+docker-compose restart nginx
+```
+
+### Production Services
+
+The production stack includes:
+- **Frontend**: Nginx-served Vue.js SPA
+- **Backend**: Go API server with health checks
+- **MySQL**: Persistent database with custom configuration
+- **Redis**: Session and cache storage
+- **MinIO**: S3-compatible object storage
+- **Nginx**: Reverse proxy with SSL termination
+
+## 🔍 Troubleshooting
+
+### Common Issues
+
+**Port Conflicts:**
+```bash
+# Check port usage
+sudo netstat -tulpn | grep :3001
+# Stop conflicting services
+docker-compose down
+```
+
+**Database Connection:**
+```bash
+# Check MySQL logs
+docker-compose logs mysql
+# Reset database
+docker-compose down -v && docker-compose up -d
+```
+
+**Frontend Build Issues:**
+```bash
+# Clear and rebuild
+cd frontend
+rm -rf node_modules package-lock.json dist
+npm install
+docker-compose build frontend --no-cache
+```
+
+**Backend API Issues:**
+```bash
+# Check backend logs
+docker-compose logs backend
+# Restart backend service
+docker-compose restart backend
+```
+
+### Health Check Endpoints
+
+- **Backend Health**: `GET http://localhost:8081/health`
+- **Frontend**: `GET http://localhost:3001` (returns index.html)
+- **Database**: Automatic Docker health checks
+- **Redis**: Automatic Docker health checks
+- **MinIO**: `GET http://localhost:9001/minio/health/live`
+
+### Log Monitoring
 
 ```bash
-# Navigate to backend directory
-cd backend
+# View all logs
+docker-compose logs
 
-# Run tests
-make test
+# Follow specific service
+docker-compose logs -f backend
+docker-compose logs -f frontend
+docker-compose logs -f mysql
 
-# Or directly with go
-go test -v ./...
+# Filter logs by timestamp
+docker-compose logs --since="1h" backend
 ```
 
-## 📦 Available Make Commands (Backend)
+## 🤝 Contributing
 
-Navigate to the `backend` directory first: `cd backend`
+We welcome contributions! Here's how to get started:
 
-```bash
-make build         # Build the application
-make run           # Run the application
-make dev           # Run with auto-reload (requires air)
-make test          # Run tests
-make clean         # Clean build artifacts
-make deps          # Install dependencies
-make migrate       # Run database migrations
-make docker-build  # Build Docker image
-make docker-run    # Run Docker container
-make init          # Initialize project (copy .env)
-make fmt           # Format code
-make lint          # Lint code (requires golangci-lint)
-make install-tools # Install development tools
-make help          # Show all commands
-```
-
-## 🔐 Authentication & Authorization
-
-### User Roles
-- **Admin**: Full access to all resources
-- **Author**: Can manage their own posts and comments
-
-### Protected Endpoints
-- All endpoints under `/auth/profile`
-- All POST, PUT, DELETE operations
-- Category management (Admin only)
-
-### JWT Token
-- Expires in 24 hours (configurable)
-- Contains user ID, username, and role
-- Required in Authorization header: `Bearer <token>`
-
-## 🗄️ Database Schema
-
-The database consists of 4 main tables:
-
-1. **users** - User accounts and authentication
-2. **categories** - Post categories
-3. **posts** - Blog posts/articles
-4. **comments** - Post comments
-
-Detailed database documentation is available in [DATABASE_README.md](./DATABASE_README.md).
-
-## 🔄 Development Workflow
-
-This project follows a comprehensive development lifecycle with validated phases:
-
-### 🏗️ Development Phases
-- ✅ **Phase 13**: Core functionality & API integration
-- ✅ **Phase 14**: Production hardening & security
-- ✅ **Phase 15**: Documentation & showcase readiness
-- ✅ **Phase 16**: Performance & UX Polish
-
-### 📊 Performance Optimization (Phase 16)
-
-BlogCMS includes comprehensive performance optimizations for production deployment:
-
-#### Server-Side Optimizations
-- **Nginx Compression**: Gzip level 6 + Brotli support
-- **Smart Caching**: Cache-control headers for static assets
-- **Asset Optimization**: Long-term caching with invalidation
-
-#### Frontend Optimizations  
-- **Code Splitting**: Route-based lazy loading
-- **Bundle Optimization**: Vendor chunk separation (Vue, Pinia, UI, Utils)
-- **Asset Inlining**: Small files (<4KB) inlined for fewer requests
-- **Minification**: Terser with console removal in production
-
-#### UX Enhancements
-- **Skeleton Loading**: Animated placeholders for all major views
-- **Loading States**: Centralized loading management with `useLoading` composable
-- **Smooth Transitions**: Enhanced user experience with proper loading feedback
-
-#### Performance Monitoring
-- **Lighthouse Audits**: Automated performance testing
-- **Bundle Analysis**: Size tracking and optimization recommendations
-- **Core Web Vitals**: FCP, LCP, CLS, TTI monitoring
-
-#### Performance Tools
-```bash
-# Run comprehensive performance audit
-./scripts/performance-audit.sh
-
-# Analyze bundle sizes and get optimization tips  
-./scripts/bundle-analysis.sh
-
-# Apply all performance optimizations
-./scripts/optimize-performance.sh
-```
-
-**Performance Targets Achieved:**
-- 🎯 Bundle size optimized with intelligent chunking
-- 🎯 TTI improved through lazy loading and code splitting
-- 🎯 UX enhanced with skeleton components and smooth loading states
-- 🎯 Lighthouse-ready with automated performance auditing
-
-### Current Development Tasks
+### Development Workflow
 
 1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
+2. **Clone** your fork: `git clone https://github.com/yourusername/go-vue-blogcms.git`
+3. **Create** a feature branch: `git checkout -b feature/amazing-feature`
+4. **Make** your changes with tests
+5. **Commit** your changes: `git commit -m 'Add amazing feature'`
+6. **Push** to the branch: `git push origin feature/amazing-feature`
+7. **Submit** a pull request
+
+### Code Standards
+
+```bash
+# Backend code quality
+cd backend
+go fmt ./...           # Format code
+go vet ./...          # Static analysis
+go test ./...         # Run tests
+
+# Frontend code quality  
+cd frontend
+npm run lint          # ESLint checks
+npm run format        # Prettier formatting
+npm run test          # Unit tests
+npm run build         # Build verification
+```
+
+### Testing
+
+```bash
+# Backend testing
+cd backend && go test -v ./...
+
+# Frontend testing
+cd frontend && npm test
+
+# Integration testing
+docker-compose -f docker-compose.test.yml up --abort-on-container-exit
+```
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🎯 Next Steps After Setup
+
+1. **Create Admin Account**: Register your first admin user via API
+2. **Add Content**: Start creating categories and blog posts
+3. **Customize**: Modify themes, layouts, and branding
+4. **Monitor**: Set up logging and performance monitoring
+5. **Backup**: Configure automated database backups
+6. **Scale**: Add load balancing and caching as needed
+
+### Recommended Production Enhancements
+
+- **SSL/TLS**: Configure Let's Encrypt for HTTPS
+- **CDN**: Add CloudFlare or similar for global performance
+- **Monitoring**: Implement Prometheus + Grafana for metrics
+- **Logging**: Set up centralized logging with ELK stack
+- **Backup**: Configure automated S3/cloud backups
+- **Security**: Add WAF and DDoS protection
+
+**Happy Blogging! 🎉**
+
+---
+
+*Built with ❤️ using Go, Vue.js, and Docker*
 
 ## 📝 Code Style
 

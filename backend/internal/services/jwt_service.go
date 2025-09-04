@@ -244,17 +244,11 @@ func (s *jwtService) RevokeAllUserTokens(userID uint) error {
 }
 
 func (s *jwtService) HashPassword(password string) (string, error) {
-	// Use bcrypt with cost 12 for good security
-	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), 12)
-	if err != nil {
-		return "", err
-	}
-	return string(hashedBytes), nil
+	return utils.HashPassword(password)
 }
 
 func (s *jwtService) CheckPassword(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
+	return utils.VerifyPassword(password, hash)
 }
 
 func (s *jwtService) generateSecureToken() (string, error) {
