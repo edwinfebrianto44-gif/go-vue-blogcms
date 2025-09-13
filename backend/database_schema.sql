@@ -3,9 +3,9 @@
 -- ====================================
 
 -- Drop database if exists and create new one
-DROP DATABASE IF EXISTS blog_cms;
-CREATE DATABASE blog_cms;
-USE blog_cms;
+DROP DATABASE IF EXISTS blogcms;
+CREATE DATABASE blogcms;
+USE blogcms;
 
 -- ====================================
 -- Table: users
