@@ -25,7 +25,7 @@ services:
       MYSQL_USER: blogcms_user
       MYSQL_PASSWORD: blogcms_password_2024
     ports:
-      - "3307:3306"
+      - "23307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./backend/database_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
@@ -47,7 +47,7 @@ services:
     container_name: blogcms-redis
     restart: unless-stopped
     ports:
-      - "6380:6379"
+      - "26380:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -68,8 +68,8 @@ services:
       MINIO_ROOT_USER: blogcms_minio
       MINIO_ROOT_PASSWORD: blogcms_minio_2024
     ports:
-      - "9001:9000"
-      - "9002:9001"
+      - "29001:9000"
+      - "29002:9001"
     volumes:
       - minio_data:/data
     networks:
@@ -118,10 +118,10 @@ services:
       GIN_MODE: release
       
       # CORS
-      CORS_ORIGINS: "http://localhost:3001"
+      CORS_ORIGINS: "http://localhost:23001"
       
     ports:
-      - "8081:8080"
+      - "28081:8080"
     networks:
       - blogcms-network
     depends_on:
@@ -147,11 +147,11 @@ services:
     container_name: blogcms-frontend
     restart: unless-stopped
     environment:
-      - VITE_API_BASE_URL=http://localhost:8081/api/v1
-      - VITE_SITE_URL=http://localhost:3001
+      - VITE_API_BASE_URL=http://localhost:28081/api/v1
+      - VITE_SITE_URL=http://localhost:23001
       - VITE_SITE_NAME=BlogCMS
     ports:
-      - "3001:80"
+      - "23001:80"
     networks:
       - blogcms-network
     depends_on:
@@ -163,8 +163,8 @@ services:
     container_name: blogcms-nginx
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "2080:80"
+      - "2443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./nginx/conf.d:/etc/nginx/conf.d
